@@ -1,5 +1,5 @@
 # Core data / numerics
-numpy>=1.26,<2.1
+numpy>=2.2
 pandas>=2.1
 scipy>=1.11
 
@@ -7,15 +7,18 @@ scipy>=1.11
 yfinance>=0.2.40
 
 # Technical indicators
-pandas-ta>=0.3.14b0
+# NOTE: pandas-ta on PyPI only ships versions requiring Python >=3.12
+# (0.4.67b0+). This project's venv was upgraded to 3.12 to support it.
+pandas-ta>=0.4.67b0
 
 # Baselines
 scikit-learn>=1.4
 statsmodels>=0.14
 
 # Deep learning (Phase 4)
-tensorflow>=2.15; platform_system != "Darwin" or platform_machine != "arm64"
-tensorflow-macos>=2.15; platform_system == "Darwin" and platform_machine == "arm64"
+# Apple deprecated tensorflow-macos; plain tensorflow now ships native arm64
+# wheels (>=2.16). Add tensorflow-metal separately for optional GPU accel.
+tensorflow>=2.16
 
 # Plotting / EDA
 matplotlib>=3.8
