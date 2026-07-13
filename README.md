@@ -25,8 +25,8 @@ where that is what the data shows.
 | **1** | Universe selection & EDA | ✅ **Done** |
 | **2** | Feature engineering & scaling pipeline | ✅ **Done** |
 | **3** | Baselines (naive, linear regression, ARIMA) | ✅ **Done** |
-| 4 | LSTM (2 stacked layers, early stopping) | ⏳ Next |
-| 5 | Streamlit app + Community Cloud deploy | ⬜ |
+| **4** | LSTM (2 stacked layers, early stopping) | ✅ **Done** |
+| 5 | Streamlit app + Community Cloud deploy | ⏳ Next |
 | 6 | README polish + final GitHub push | ⬜ |
 
 ---
@@ -232,6 +232,79 @@ Predicted-vs-actual plots for best/average/worst cases (by relative RMSE):
 
 ---
 
+## Phase 4 — LSTM (complete)
+
+### Setup
+
+- **One LSTM per stock** (40 models, not per-sector): a quick benchmark showed
+  ~7–12s per stock with early stopping, so the full run finishes in ~6.5
+  minutes — no compute-driven compromise needed.
+- **Architecture** ([`src/lstm_model.py`](src/lstm_model.py)): 2 stacked LSTM
+  layers (64 units each), `Dropout(0.2)`, Dense(1) head; Adam + MSE; early
+  stopping on validation loss (patience 10, best weights restored). 30-day
+  input sequences of the 9 scaled engineered features — never raw OHLCV.
+- **Same target, cutoff, and metrics as the baselines** — `compute_metrics`
+  from Phase 3 is reused unchanged, so all four models are scored identically.
+- **No rows lost at split boundaries**: val/test sequences borrow the trailing
+  29 days of the preceding split as lookback context (already-realised past
+  data, not leakage), keeping the exact Phase 2/3 split sizes.
+- **Target scaled with a train-only-fit scaler** (predictions
+  inverse-transformed back to INR before scoring) — extending the "fit on
+  train only" rule to the target.
+
+### The honest result: the LSTM did not beat the baselines
+
+From [`results/final_comparison.csv`](results/final_comparison.csv)
+(40 stocks, zero training failures):
+
+| Sector | LSTM dir. acc. | Best baseline dir. acc. | Verdict |
+|---|---|---|---|
+| Information Technology | 49.5% | 49.9% | **Tied** (−0.5pp) |
+| Banking & Financial Services | 50.2% | 51.0% | **Tied** (−0.8pp) |
+| Energy | 50.9% | 50.9% | **Tied** (+0.0pp) |
+| FMCG | 50.0% | 49.0% | **Tied** (+0.9pp) |
+
+**The LSTM tied the best baseline on directional accuracy in all four sectors
+(all gaps within ±1pp of a coin flip) while posting substantially worse RMSE,
+at far higher training cost.** RMSE win counts across 40 stocks remain
+naive 29 / ARIMA 11 / **LSTM 0**.
+
+### Why the LSTM's RMSE is worse — a real, diagnosable failure mode
+
+The predicted-vs-actual plots
+([`results/plots/lstm_pred_vs_actual.png`](results/plots/lstm_pred_vs_actual.png))
+show the mechanism clearly: on stocks that **rallied above their training-period
+price range** (e.g. Marico), the LSTM's predictions plateau near the top of the
+range it was trained on and never catch up. The target scaler is fit on train
+only (correct — anything else leaks), so test prices above the training maximum
+map to scaled targets outside anything the network ever saw, and a regression
+net has no reason to output beyond its training range. Naive/ARIMA are immune
+*by construction* — they anchor to today's actual price.
+
+There is a second-order artifact worth naming too: a model stuck below the
+current price predicts "down" every day, so its directional accuracy converges
+to the fraction of down days (~48% on Marico's rallying test period — exactly
+what we observe). Both effects and the honest caveats are documented in
+[`notebooks/04_lstm.ipynb`](notebooks/04_lstm.ipynb).
+
+**The right fix — future work:** predict *returns* (scale-free) rather than
+price levels. That redesign is beyond this project's spec, but it's the
+correct next step, and knowing *why* is the point of this project.
+
+### An infrastructure gotcha worth documenting
+
+On this environment (TF 2.21 + Keras 3.15, Python 3.12, macOS arm64),
+importing `pandas`/`scikit-learn` **before** `tensorflow` makes
+`model.fit()` with an `EarlyStopping` callback deadlock at 0% CPU,
+reproducibly (verified by systematic isolation). Importing TensorFlow first
+fixes it. `notebooks/04_lstm.ipynb` imports TF as its very first statement and
+[`src/lstm_model.py`](src/lstm_model.py) documents the constraint.
+
+Loss curves for the three representative stocks:
+[`results/plots/lstm_loss_curves.png`](results/plots/lstm_loss_curves.png).
+
+---
+
 ## Repository structure
 
 ```
@@ -247,18 +320,21 @@ Predicted-vs-actual plots for best/average/worst cases (by relative RMSE):
 │   ├── features.py            # compute_features(): engineered indicators via pandas-ta
 │   ├── scaling.py             # chronological split + train-only StandardScaler
 │   ├── baselines.py           # naive / linear regression / ARIMA (walk-forward)
-│   └── evaluate.py            # compute_metrics(): RMSE, MAE, MAPE, directional accuracy
+│   ├── evaluate.py            # compute_metrics(): RMSE, MAE, MAPE, directional accuracy
+│   └── lstm_model.py          # sequence building, LSTM architecture, training loop
 ├── notebooks/
 │   ├── 01_universe_and_eda.ipynb
 │   ├── 02_feature_engineering.ipynb
-│   └── 03_baselines.ipynb
+│   ├── 03_baselines.ipynb
+│   └── 04_lstm.ipynb
 └── results/
     ├── baseline_metrics.csv       # per-stock RMSE/MAE/MAPE/DirAcc for all 3 baselines
-    └── plots/                     # EDA + feature-engineering + baseline figures
+    ├── final_comparison.csv       # all 4 models side by side, per stock
+    └── plots/                     # EDA, features, baseline + LSTM figures
 ```
-*(Later phases add `lstm_model.py`, notebook 04, and `app/app.py`.)*
+*(Phase 5 adds `app/app.py`.)*
 
-## Reproduce Phase 1 + 2 + 3
+## Reproduce Phases 1–4
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate   # pandas-ta requires Python >=3.12
@@ -272,6 +348,8 @@ jupyter nbconvert --to notebook --execute \
   --inplace notebooks/02_feature_engineering.ipynb       # Phase 2 features + scaling demo
 jupyter nbconvert --to notebook --execute \
   --inplace notebooks/03_baselines.ipynb                 # Phase 3 baselines + metrics
+jupyter nbconvert --to notebook --execute \
+  --inplace notebooks/04_lstm.ipynb                      # Phase 4 LSTM (~7 min on CPU)
 ```
 
 All notebooks run top-to-bottom with no manual intervention. They **read** the
