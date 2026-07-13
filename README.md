@@ -24,8 +24,8 @@ where that is what the data shows.
 |-------|-------|--------|
 | **1** | Universe selection & EDA | ✅ **Done** |
 | **2** | Feature engineering & scaling pipeline | ✅ **Done** |
-| 3 | Baselines (naive, linear regression, ARIMA) | ⏳ Next |
-| 4 | LSTM (2 stacked layers, early stopping) | ⬜ |
+| **3** | Baselines (naive, linear regression, ARIMA) | ✅ **Done** |
+| 4 | LSTM (2 stacked layers, early stopping) | ⏳ Next |
 | 5 | Streamlit app + Community Cloud deploy | ⬜ |
 | 6 | README polish + final GitHub push | ⬜ |
 
@@ -183,6 +183,55 @@ distribution plots (saved to `results/plots/`).
 
 ---
 
+## Phase 3 — Baseline Models (complete)
+
+### Fair comparison: same information cutoff for every model
+
+Every baseline predicts `Adj Close` at date `t+1` using only information
+available through date `t` ("today") — this common cutoff is what makes the
+comparison honest, and it's the same cutoff the LSTM will use in Phase 4:
+
+| Model | How it predicts tomorrow |
+|---|---|
+| **Naive** ([`src/baselines.py`](src/baselines.py)) | tomorrow's close = today's close |
+| **Linear regression** | today's *engineered* features (never raw OHLCV) → tomorrow's close |
+| **ARIMA** | walk-forward one-step: append each test date's already-realised close to the fitted model's state, forecast one day ahead — avoids the compounding error of a single static multi-step forecast over the whole test horizon |
+
+ARIMA order (5,1,0) is fixed, not grid-searched — it's a classical reference
+point, not the model under study. A list of fallback orders
+`[(5,1,0), (2,1,0), (1,1,0), (1,1,1)]` is tried per stock; **all 40 stocks
+converged on the first order, so no ARIMA exclusions were needed** (see
+[`notebooks/03_baselines.ipynb`](notebooks/03_baselines.ipynb) for the
+per-stock convergence log, kept even though empty this run).
+
+### The honest finding: low RMSE ≠ predictive skill
+
+| | Naive | Linear Regression | ARIMA |
+|---|---|---|---|
+| **RMSE wins** (of 40 stocks) | **29** | 0 | 11 |
+| **Mean directional accuracy** | **2.6%** | 48.7% | 49.9% |
+
+Naive wins on RMSE most often — because day-to-day price moves are small
+relative to price level, "tomorrow = today" is a low-error prediction almost
+by definition on a near-random-walk series. But its **directional accuracy is
+~2.6%**, essentially zero, because its predicted change is *always exactly
+zero* — it can never be on the correct side of an actual up/down move except
+by the rare coincidence of a flat day. Linear regression and ARIMA score
+worse on raw RMSE but have directional accuracy near **50%** (real, if weak,
+directional signal — roughly coin-flip, not clearly better than chance, but
+non-zero unlike naive).
+
+**This is the central baseline lesson the LSTM has to beat:** a model can look
+good on RMSE while having no real predictive skill at all. Phase 4's
+evaluation explicitly checks LSTM directional accuracy against this ~50%
+baseline floor, not just its RMSE against naive's artificially-low number.
+
+Full per-stock results: [`results/baseline_metrics.csv`](results/baseline_metrics.csv).
+Predicted-vs-actual plots for best/average/worst cases (by relative RMSE):
+[`results/plots/baselines_pred_vs_actual.png`](results/plots/baselines_pred_vs_actual.png).
+
+---
+
 ## Repository structure
 
 ```
@@ -196,17 +245,20 @@ distribution plots (saved to `results/plots/`).
 │   ├── universe.py            # fetch top 10 per sector by live market cap
 │   ├── data_loader.py         # reusable historical-data loader + cache
 │   ├── features.py            # compute_features(): engineered indicators via pandas-ta
-│   └── scaling.py             # chronological split + train-only StandardScaler
+│   ├── scaling.py             # chronological split + train-only StandardScaler
+│   ├── baselines.py           # naive / linear regression / ARIMA (walk-forward)
+│   └── evaluate.py            # compute_metrics(): RMSE, MAE, MAPE, directional accuracy
 ├── notebooks/
 │   ├── 01_universe_and_eda.ipynb
-│   └── 02_feature_engineering.ipynb
+│   ├── 02_feature_engineering.ipynb
+│   └── 03_baselines.ipynb
 └── results/
-    └── plots/                 # EDA + feature-engineering figures; metrics to follow
+    ├── baseline_metrics.csv       # per-stock RMSE/MAE/MAPE/DirAcc for all 3 baselines
+    └── plots/                     # EDA + feature-engineering + baseline figures
 ```
-*(Later phases add `baselines.py`, `lstm_model.py`, `evaluate.py`,
-notebooks 03–04, and `app/app.py`.)*
+*(Later phases add `lstm_model.py`, notebook 04, and `app/app.py`.)*
 
-## Reproduce Phase 1 + 2
+## Reproduce Phase 1 + 2 + 3
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate   # pandas-ta requires Python >=3.12
@@ -218,12 +270,15 @@ jupyter nbconvert --to notebook --execute \
   --inplace notebooks/01_universe_and_eda.ipynb          # Phase 1 EDA
 jupyter nbconvert --to notebook --execute \
   --inplace notebooks/02_feature_engineering.ipynb       # Phase 2 features + scaling demo
+jupyter nbconvert --to notebook --execute \
+  --inplace notebooks/03_baselines.ipynb                 # Phase 3 baselines + metrics
 ```
 
-Both notebooks run top-to-bottom with no manual intervention. They **read** the
+All notebooks run top-to-bottom with no manual intervention. They **read** the
 locked universe; to refresh the market-cap snapshot, re-run `src/universe.py`.
 
 ### Non-negotiable rules honoured
-No fabricated results · chronological splits only (Phase 3+) · scaler fit on
-train only (Phase 2) · universe locked and dated · everything checked into Git as
-we go · every notebook runs end-to-end.
+No fabricated results (see Phase 3's honest RMSE-vs-directional-accuracy
+finding) · chronological splits only · scaler fit on train only · universe
+locked and dated · everything checked into Git as we go · every notebook runs
+end-to-end.
