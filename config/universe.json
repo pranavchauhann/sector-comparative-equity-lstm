@@ -1,0 +1,276 @@
+{
+  "metadata": {
+    "description": "Top stocks by market capitalisation per NSE sector for the Sector-Comparative Indian Equity Forecasting project.",
+    "top_n_per_sector": 10,
+    "n_sectors": 4,
+    "n_tickers": 40,
+    "fetch_date": "2026-07-14",
+    "fetch_timestamp": "2026-07-14T02:16:02.649525+05:30",
+    "candidate_pool_as_of": "2026-07-14",
+    "market_cap_source": "Yahoo Finance via yfinance (live at fetch time)",
+    "candidate_pool_source": {
+      "Information Technology": "Nifty IT index constituents (nseindia.com)",
+      "Banking & Financial Services": "Nifty Bank + Nifty Financial Services index constituents (nseindia.com)",
+      "Energy": "Nifty Energy index constituents (nseindia.com)",
+      "FMCG": "Nifty FMCG index constituents (nseindia.com)"
+    },
+    "excluded_no_market_cap": {
+      "Information Technology": [
+        "LTIM.NS"
+      ]
+    },
+    "excluded_note": "Candidates Yahoo Finance could not price (e.g. a symbol Yahoo does not carry, such as LTIMindtree/LTIM). Excluded from ranking because we also cannot fetch their price history downstream.",
+    "sourcing_note": "Sector membership comes from NSE sectoral-index constituents (hand-curated superset). Market caps are pulled live from Yahoo Finance and used to rank each pool to the top N. Cross-check against Moneycontrol / ET Markets before relying on this list.",
+    "currency": "INR"
+  },
+  "sectors": {
+    "Information Technology": [
+      {
+        "ticker": "TCS.NS",
+        "market_cap": 7892857920517.0,
+        "rank": 1,
+        "market_cap_lakh_cr": 7.89
+      },
+      {
+        "ticker": "INFY.NS",
+        "market_cap": 4464347923489.399,
+        "rank": 2,
+        "market_cap_lakh_cr": 4.46
+      },
+      {
+        "ticker": "HCLTECH.NS",
+        "market_cap": 3304282311136.8003,
+        "rank": 3,
+        "market_cap_lakh_cr": 3.3
+      },
+      {
+        "ticker": "WIPRO.NS",
+        "market_cap": 1765025664337.81,
+        "rank": 4,
+        "market_cap_lakh_cr": 1.77
+      },
+      {
+        "ticker": "TECHM.NS",
+        "market_cap": 1332719693980.5,
+        "rank": 5,
+        "market_cap_lakh_cr": 1.33
+      },
+      {
+        "ticker": "OFSS.NS",
+        "market_cap": 1022749344694.0,
+        "rank": 6,
+        "market_cap_lakh_cr": 1.02
+      },
+      {
+        "ticker": "PERSISTENT.NS",
+        "market_cap": 811214072865.6,
+        "rank": 7,
+        "market_cap_lakh_cr": 0.81
+      },
+      {
+        "ticker": "COFORGE.NS",
+        "market_cap": 682142270669.9,
+        "rank": 8,
+        "market_cap_lakh_cr": 0.68
+      },
+      {
+        "ticker": "MPHASIS.NS",
+        "market_cap": 456129076320.0,
+        "rank": 9,
+        "market_cap_lakh_cr": 0.46
+      },
+      {
+        "ticker": "LTTS.NS",
+        "market_cap": 349782399136.1,
+        "rank": 10,
+        "market_cap_lakh_cr": 0.35
+      }
+    ],
+    "Banking & Financial Services": [
+      {
+        "ticker": "HDFCBANK.NS",
+        "market_cap": 12597417393250.201,
+        "rank": 1,
+        "market_cap_lakh_cr": 12.6
+      },
+      {
+        "ticker": "ICICIBANK.NS",
+        "market_cap": 10110387522913.5,
+        "rank": 2,
+        "market_cap_lakh_cr": 10.11
+      },
+      {
+        "ticker": "SBIN.NS",
+        "market_cap": 9572150436682.0,
+        "rank": 3,
+        "market_cap_lakh_cr": 9.57
+      },
+      {
+        "ticker": "BAJFINANCE.NS",
+        "market_cap": 6358400341193.601,
+        "rank": 4,
+        "market_cap_lakh_cr": 6.36
+      },
+      {
+        "ticker": "AXISBANK.NS",
+        "market_cap": 4104542145553.2,
+        "rank": 5,
+        "market_cap_lakh_cr": 4.1
+      },
+      {
+        "ticker": "KOTAKBANK.NS",
+        "market_cap": 3825907743017.5,
+        "rank": 6,
+        "market_cap_lakh_cr": 3.83
+      },
+      {
+        "ticker": "BAJAJFINSV.NS",
+        "market_cap": 3050543139480.8,
+        "rank": 7,
+        "market_cap_lakh_cr": 3.05
+      },
+      {
+        "ticker": "SHRIRAMFIN.NS",
+        "market_cap": 2466125258915.9,
+        "rank": 8,
+        "market_cap_lakh_cr": 2.47
+      },
+      {
+        "ticker": "SBILIFE.NS",
+        "market_cap": 1861952182695.0,
+        "rank": 9,
+        "market_cap_lakh_cr": 1.86
+      },
+      {
+        "ticker": "JIOFIN.NS",
+        "market_cap": 1594064419208.43,
+        "rank": 10,
+        "market_cap_lakh_cr": 1.59
+      }
+    ],
+    "Energy": [
+      {
+        "ticker": "RELIANCE.NS",
+        "market_cap": 17550263760331.502,
+        "rank": 1,
+        "market_cap_lakh_cr": 17.55
+      },
+      {
+        "ticker": "ADANIPOWER.NS",
+        "market_cap": 4155080321139.3003,
+        "rank": 2,
+        "market_cap_lakh_cr": 4.16
+      },
+      {
+        "ticker": "NTPC.NS",
+        "market_cap": 3410802312634.5,
+        "rank": 3,
+        "market_cap_lakh_cr": 3.41
+      },
+      {
+        "ticker": "ONGC.NS",
+        "market_cap": 3125570368730.6997,
+        "rank": 4,
+        "market_cap_lakh_cr": 3.13
+      },
+      {
+        "ticker": "POWERGRID.NS",
+        "market_cap": 2659972692234.0,
+        "rank": 5,
+        "market_cap_lakh_cr": 2.66
+      },
+      {
+        "ticker": "COALINDIA.NS",
+        "market_cap": 2651205726275.4,
+        "rank": 6,
+        "market_cap_lakh_cr": 2.65
+      },
+      {
+        "ticker": "ADANIGREEN.NS",
+        "market_cap": 2547357923707.5,
+        "rank": 7,
+        "market_cap_lakh_cr": 2.55
+      },
+      {
+        "ticker": "IOC.NS",
+        "market_cap": 1976267311700.8499,
+        "rank": 8,
+        "market_cap_lakh_cr": 1.98
+      },
+      {
+        "ticker": "ADANIENSOL.NS",
+        "market_cap": 1975629433033.2,
+        "rank": 9,
+        "market_cap_lakh_cr": 1.98
+      },
+      {
+        "ticker": "BPCL.NS",
+        "market_cap": 1314033477998.7,
+        "rank": 10,
+        "market_cap_lakh_cr": 1.31
+      }
+    ],
+    "FMCG": [
+      {
+        "ticker": "HINDUNILVR.NS",
+        "market_cap": 5006039142817.2,
+        "rank": 1,
+        "market_cap_lakh_cr": 5.01
+      },
+      {
+        "ticker": "ITC.NS",
+        "market_cap": 3503865790799.15,
+        "rank": 2,
+        "market_cap_lakh_cr": 3.5
+      },
+      {
+        "ticker": "NESTLEIND.NS",
+        "market_cap": 2751704534640.0,
+        "rank": 3,
+        "market_cap_lakh_cr": 2.75
+      },
+      {
+        "ticker": "VBL.NS",
+        "market_cap": 1586714281775.4001,
+        "rank": 4,
+        "market_cap_lakh_cr": 1.59
+      },
+      {
+        "ticker": "BRITANNIA.NS",
+        "market_cap": 1288284081156.0,
+        "rank": 5,
+        "market_cap_lakh_cr": 1.29
+      },
+      {
+        "ticker": "MARICO.NS",
+        "market_cap": 1097290662700.5,
+        "rank": 6,
+        "market_cap_lakh_cr": 1.1
+      },
+      {
+        "ticker": "GODREJCP.NS",
+        "market_cap": 1093606003271.1001,
+        "rank": 7,
+        "market_cap_lakh_cr": 1.09
+      },
+      {
+        "ticker": "TATACONSUM.NS",
+        "market_cap": 1087231641058.7999,
+        "rank": 8,
+        "market_cap_lakh_cr": 1.09
+      },
+      {
+        "ticker": "DABUR.NS",
+        "market_cap": 778587703093.2,
+        "rank": 9,
+        "market_cap_lakh_cr": 0.78
+      },
+      {
+        "ticker": "COLPAL.NS",
+        "market_cap": 550770908850.0,
+        "rank": 10,
+        "market_cap_lakh_cr": 0.55
+      }
+    ]
+  }
+}

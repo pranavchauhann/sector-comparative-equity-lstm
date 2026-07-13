@@ -1,0 +1,29 @@
+# Data (raw price data is regenerable via src/data_loader.py — keep it out of git)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Trained models (regenerable; often large)
+models/
+*.h5
+*.keras
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# NOTE: config/universe.json is intentionally NOT ignored — the locked,
+# dated ticker universe must be version-controlled (see Non-Negotiable Rules).
+# NOTE: results/ (metrics CSVs + plots) is intentionally NOT ignored — these
+# are the portfolio deliverables recruiters read.
