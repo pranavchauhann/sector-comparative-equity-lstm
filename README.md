@@ -1,431 +1,146 @@
 # Sector-Comparative Indian Equity Forecasting with LSTM
 
-Predict the **next-day closing price** for the top 10 stocks by market cap in each
-of four NSE sectors — **Information Technology, Banking & Financial Services,
-Energy, and FMCG** — and honestly compare an LSTM against simpler baselines
-(naive, linear regression, ARIMA) to see where deep learning actually helps.
+Honest, baseline-anchored comparison of an LSTM against naive/linear-regression/ARIMA models for next-day price prediction across 40 NSE stocks in 4 sectors — built to show *where* deep learning helps and where it doesn't, not to oversell it.
 
-> **Not investment advice.** This is a portfolio project demonstrating ML
-> technique on Indian equity data. Stock-price predictability is fundamentally
-> limited by market efficiency; the point of the project is a *rigorous, honest*
-> model comparison, not a trading signal.
+## 🔗 Live demo
 
-**Live demo:** _add the Streamlit Community Cloud URL here once deployed —
-see [DEPLOY.md](DEPLOY.md)._
+**[sector-comparative-equity-lstm.streamlit.app](https://sector-comparative-equity-lstm.streamlit.app)**
 
-### Why this framing
-Most stock-LSTM portfolio projects skip baselines and report inflated accuracy.
-The differentiator here is intellectual honesty: strong baselines, chronological
-splits, no data leakage, and a willingness to report "the LSTM barely beat naive"
-where that is what the data shows.
+Pick a sector and stock, see actual vs. LSTM-predicted price, and the full 4-model comparison — including the sector-by-sector verdict on whether the LSTM actually earned its complexity.
+
+> **Not investment advice.** This is a portfolio project demonstrating ML technique on Indian equity data. Stock-price predictability is fundamentally limited by market efficiency; the point of this project is a *rigorous, honest* model comparison, not a trading signal.
 
 ---
 
-## Project status
+## Problem statement
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| **1** | Universe selection & EDA | ✅ **Done** |
-| **2** | Feature engineering & scaling pipeline | ✅ **Done** |
-| **3** | Baselines (naive, linear regression, ARIMA) | ✅ **Done** |
-| **4** | LSTM (2 stacked layers, early stopping) | ✅ **Done** |
-| **5** | Streamlit app + Community Cloud deploy | ✅ **Done** |
-| 6 | README polish + final GitHub push | ⏳ Next |
+Most "stock price LSTM" portfolio projects report a single model's accuracy and stop there — no baseline, no honest failure analysis, and often a leaky evaluation setup that makes the numbers look better than they are. This project asks a narrower, more defensible question: for next-day closing-price prediction on Indian equities, **does an LSTM actually outperform much simpler models once both are evaluated identically and fairly** — same information cutoff, same chronological split, same metrics — or does the added complexity buy nothing? The answer is investigated per stock and per sector across Information Technology, Banking & Financial Services, Energy, and FMCG, and reported without softening it.
 
 ---
 
-## Phase 1 — Universe & EDA (complete)
+## Data & universe
 
-### How the 40 tickers were selected
+**40 stocks: the top 10 by market capitalisation in each of 4 NSE sectors**, selected via a two-step process documented in [`src/universe.py`](src/universe.py):
 
-**Two-step approach: NSE sector membership + live market-cap ranking.**
+1. **Sector membership** comes from NSE sectoral-index constituents (Nifty IT / Bank & Financial Services / Energy / FMCG), curated as candidate pools since `nseindia.com` blocks programmatic scraping.
+2. **Ranking** uses **live market capitalisation pulled from Yahoo Finance** at fetch time, keeping the top 10 per sector.
 
-1. **Sector membership (candidate pools).** For each sector I start from the
-   constituents of the corresponding **NSE sectoral index** — Nifty IT, Nifty
-   Bank / Nifty Financial Services, Nifty Energy, Nifty FMCG. These are curated
-   as *superset* candidate pools (12–16 names each) in
-   [`src/universe.py`](src/universe.py), dated `candidate_pool_as_of`.
-2. **Ranking (top 10).** `src/universe.py` then pulls the **current market
-   capitalisation for every candidate live from Yahoo Finance** and keeps the
-   top 10 per sector. This is the part that must not be stale, and it is fetched
-   programmatically on every run.
+The result is locked to [`config/universe.json`](config/universe.json) with the market-cap source and fetch date — **as of 2026-07-14** — and never silently re-ranked. One deviation is recorded there: LTIMindtree (LTIM) is excluded from IT because Yahoo Finance carries no price data for it under any symbol, so OFSS takes the 10th slot.
 
-The result is written to [`config/universe.json`](config/universe.json) with the
-market-cap source, the fetch date, and per-ticker market caps — then **locked**.
-Downstream code reads that file and never re-ranks, so the universe stays frozen
-between explicit refreshes (`python src/universe.py`).
-
-**Why not scrape NSE directly?** The spec's first-choice source is the NSE
-sectoral-index constituent CSVs. In practice `nseindia.com` blocks programmatic
-access (requests from non-browser / data-centre IPs return nothing), so scraping
-it is not reproducible inside a script. Rather than hard-code a stale list, I use
-the NSE index *definitions* for sector membership (which change only at
-semi-annual reconstitution) and do the volatile part — the market-cap ranking —
-live via Yahoo. This is honest, dated, and mostly programmatic. **Cross-check the
-final list against Moneycontrol / ET Markets before relying on it.**
-
-**Market-cap snapshot: `fetch_date` in `config/universe.json` (built 2026-07-14).**
-
-<details>
-<summary><b>The locked universe (top 10 per sector, by market cap)</b></summary>
-
-| IT | Banking & Fin. Svcs | Energy | FMCG |
-|----|--------------------|--------|------|
-| TCS | HDFCBANK | RELIANCE | HINDUNILVR |
-| INFY | ICICIBANK | ADANIPOWER | ITC |
-| HCLTECH | SBIN | NTPC | NESTLEIND |
-| WIPRO | BAJFINANCE | ONGC | VBL |
-| TECHM | AXISBANK | POWERGRID | BRITANNIA |
-| OFSS | KOTAKBANK | COALINDIA | MARICO |
-| PERSISTENT | BAJAJFINSV | ADANIGREEN | GODREJCP |
-| COFORGE | SHRIRAMFIN | IOC | TATACONSUM |
-| MPHASIS | SBILIFE | ADANIENSOL | DABUR |
-| LTTS | JIOFIN | BPCL | COLPAL |
-
-Tickers use the Yahoo `.NS` (NSE) suffix in code and data.
-</details>
-
-**Known deviation — LTIMindtree (LTIM).** Yahoo Finance carries no data for
-LTIM.NS under any symbol variant (confirmed 404 for `LTIM.NS`, `LTIMINDTREE.NS`,
-`MINDTREE.NS`, `LTI.NS`). A large IT name that would otherwise rank ~top-5 is
-therefore excluded, and **OFSS** takes the 10th IT slot. Since we could not fetch
-LTIM's *price history* either, it could not be modelled regardless. This is
-recorded in `config/universe.json` under `metadata.excluded_no_market_cap`.
-
-### Data
-
-- **Source:** Yahoo Finance via `yfinance` (`.NS` tickers).
-- **Window:** 5 years of daily data ending on the fetch date (2021-07-14 →
-  2026-07-10; the most recent unsettled session is dropped).
-- **Adjusted prices:** downloaded with `auto_adjust=False`, modelled on
-  **`Adj Close`** so splits and bonus issues are handled correctly.
-- **Cache:** one CSV per ticker under `data/raw/` (gitignored — regenerable via
-  `src/data_loader.py`).
-
-### EDA highlights (see [`notebooks/01_universe_and_eda.ipynb`](notebooks/01_universe_and_eda.ipynb))
-
-- **Coverage:** 39 of 40 tickers have the full ~1,236 trading days. **JIOFIN**
-  (Jio Financial Services) is the exception at ~715 days — it listed in
-  **Aug 2023** after demerging from Reliance. Flagged now so train/val/test
-  sizing accounts for it.
-- **Split/bonus adjustment works:** historical `Adj Close / Close` diverges most
-  for **Coal India (−34%)**, BPCL, ONGC, IOC — consistent with heavy
-  dividend/bonus histories — and converges to 1.0 at the latest date.
-- **Volatility:** Adani names are the most volatile (~50% annualised); FMCG
-  staples (Nestlé, ITC, HUL) the least (~19–20%).
-- **Structure:** mean **intra-sector** return correlation **0.42** clearly
-  exceeds mean **inter-sector 0.19** (IT most cohesive at 0.55), which justifies
-  the sector-comparative framing.
-
-Plots saved to [`results/plots/`](results/plots/): price history by sector,
-return distributions, the adjustment check, and the correlation heatmap.
+- **Time period:** 5 years of daily data ending at the fetch date.
+- **Adjusted prices:** downloaded with `auto_adjust=False`, modelled on **`Adj Close`** throughout so Indian equities' frequent splits and bonus issues are handled correctly (verified in the EDA notebook — Coal India's historical `Adj Close/Close` ratio diverges by up to 34%, confirming the adjustment is doing real work).
+- **Coverage caveat:** 39 of 40 tickers span the full ~1,236 trading days; **JIOFIN** (Jio Financial Services) only has ~715 days, since it listed in August 2023 after demerging from Reliance.
 
 ---
 
-## Phase 2 — Feature Engineering (complete)
+## Approach
 
-### Features
+**Features** (9 per stock, via `pandas_ta` — not hand-rolled formulas, [`src/features.py`](src/features.py)): daily return, 5/20/50-day moving averages, RSI(14), MACD + signal line, 20-day rolling volatility, and volume ratio. Raw OHLCV never reaches any model — only these engineered features (asserted, not just claimed, in [`notebooks/02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb)).
 
-Per stock, 9 engineered columns computed via **`pandas_ta`** (not hand-rolled
-formulas — [`src/features.py`](src/features.py)):
+**Models compared, in order of increasing complexity** ([`src/baselines.py`](src/baselines.py), [`src/lstm_model.py`](src/lstm_model.py)):
 
-| Feature | Description |
+| Model | How it predicts tomorrow's close |
 |---|---|
-| `daily_return` | % change in `Adj Close` |
-| `ma_5`, `ma_20`, `ma_50` | Simple moving averages of `Adj Close` |
-| `rsi_14` | 14-day RSI |
-| `macd`, `macd_signal` | MACD line (12,26) and signal line (9) |
-| `volatility_20` | 20-day rolling std of `daily_return` |
-| `volume_ratio` | Volume ÷ 20-day average volume |
+| Naive | tomorrow = today |
+| Linear Regression | today's 9 engineered features → tomorrow's close |
+| ARIMA(5,1,0) | walk-forward one-step: append each day's realised close, forecast one step ahead |
+| LSTM | 2 stacked LSTM layers (64 units), Dropout(0.2), Dense head, on 30-day sequences of scaled features |
 
-**Warm-up:** every stock loses **49–51 rows** to indicator warm-up — `MA_50`
-(needing 50 prior observations) is the binding constraint; a trailing
-unsettled-session row adds one more where present. Documented per stock in
-[`notebooks/02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb).
-Engineered CSVs are saved to `data/processed/` (gitignored, regenerable).
+**Chronological split — why it matters:** train/val/test are split **70/15/15 by date, never shuffled**. Random splitting on time series lets the model train on data from *after* the point it's being tested on — a common and serious leakage bug in naive implementations. Every model here is also held to the same **"predict day *t+1* using only information through day *t*"** cutoff, so no model gets an informational advantage over another — including the LSTM, whose 30-day input sequences borrow lookback context from the immediately preceding split (already-realised past data, not leakage) rather than losing 29 rows of test data to warm-up.
 
-**Redundancy check:** `ma_5`/`ma_20`/`ma_50` are highly correlated (r ≈ 0.94–0.98)
-and so are `macd`/`macd_signal` (r ≈ 0.95) — expected, since they're smoothed
-derivatives of the same price series. Kept for now; revisiting via ablation is a
-later-phase decision, not a Phase 2 one.
-
-**Sanity checks (asserted in the notebook, not just eyeballed):** `rsi_14` stays
-within `[0, 100]` across all 40 stocks (observed range ≈ [10.7, 92.1]);
-`volatility_20` is non-negative throughout.
-
-### Scaling — chronological split, train-only fit
-
-[`src/scaling.py`](src/scaling.py) implements:
-- `chronological_split(df, train_frac=0.70, val_frac=0.15)` — **no shuffling**,
-  first 70% of dates → train, next 15% → val, remaining 15% → test.
-- `scale_features(train, val, test, feature_cols)` — fits `StandardScaler` on
-  **train only**, applies the same fitted scaler to val/test. Scaled train
-  features have mean ≈ 0 / std ≈ 1 by construction; scaled test features do
-  **not** (confirmed in the notebook) — which is exactly the leakage-free
-  behaviour we want, since test is scaled with train's statistics, not its own.
-
-### Leakage guard
-
-The notebook's **final cell** prints the exact 9-column feature list and
-asserts it is disjoint from the raw OHLCV columns (`Open/High/Low/Close/Volume`).
-`Adj Close` itself is also excluded from modeling features — it's kept only as
-the prediction target / for plotting.
-
-### Environment note
-
-`pandas-ta` (as of `0.4.71b0` on PyPI) requires **Python ≥3.12**; the project
-venv was rebuilt from 3.11 → **3.12** to support it. This also required
-switching `tensorflow-macos` (deprecated by Apple, stuck at 2.16.2) to plain
-**`tensorflow`** (native arm64 wheels from 2.16+), and relaxing the `numpy` pin
-so `pip` could resolve a consistent set across `pandas-ta`, `scipy`, and
-`tensorflow` together. See [`requirements.txt`](requirements.txt).
-
-See [`notebooks/02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb)
-for the full run, including the correlation heatmap and RSI/volatility
-distribution plots (saved to `results/plots/`).
+**Scaling:** `StandardScaler` is fit on the **training split only** ([`src/scaling.py`](src/scaling.py)) — for both input features and, for the LSTM, the prediction target — and applied unchanged to val/test. This is checked explicitly in the notebooks (scaled train features have mean≈0/std≈1; scaled test features do not, which is the *correct*, non-leaking behaviour).
 
 ---
 
-## Phase 3 — Baseline Models (complete)
+## Results
 
-### Fair comparison: same information cutoff for every model
+Full per-stock numbers: [`results/final_comparison.csv`](results/final_comparison.csv). Sector-level summary (mean across each sector's 10 stocks):
 
-Every baseline predicts `Adj Close` at date `t+1` using only information
-available through date `t` ("today") — this common cutoff is what makes the
-comparison honest, and it's the same cutoff the LSTM will use in Phase 4:
+| Sector | Naive RMSE | LinReg RMSE | ARIMA RMSE | LSTM RMSE | Naive Dir. Acc. | LinReg Dir. Acc. | ARIMA Dir. Acc. | LSTM Dir. Acc. |
+|---|---|---|---|---|---|---|---|---|
+| Information Technology | 58.34 | 63.72 | 58.68 | **125.40** | 2.5% | 49.9% | 48.8% | 49.1% |
+| Banking & Financial Services | 17.05 | 18.76 | 17.03 | **89.80** | 2.7% | 48.5% | 51.0% | 50.3% |
+| Energy | 11.04 | 12.61 | 11.13 | **22.46** | 2.6% | 49.0% | 50.9% | 50.6% |
+| FMCG | 21.34 | 23.28 | 21.40 | **44.07** | 2.5% | 47.5% | 49.0% | 50.6% |
+| **Overall (40 stocks)** | — | — | — | — | **2.6%** | **48.7%** | **50.0%** | **50.1%** |
 
-| Model | How it predicts tomorrow |
-|---|---|
-| **Naive** ([`src/baselines.py`](src/baselines.py)) | tomorrow's close = today's close |
-| **Linear regression** | today's *engineered* features (never raw OHLCV) → tomorrow's close |
-| **ARIMA** | walk-forward one-step: append each test date's already-realised close to the fitted model's state, forecast one day ahead — avoids the compounding error of a single static multi-step forecast over the whole test horizon |
+**RMSE win count across all 40 stocks: Naive 29, ARIMA 11, Linear Regression 0, LSTM 0.**
 
-ARIMA order (5,1,0) is fixed, not grid-searched — it's a classical reference
-point, not the model under study. A list of fallback orders
-`[(5,1,0), (2,1,0), (1,1,0), (1,1,1)]` is tried per stock; **all 40 stocks
-converged on the first order, so no ARIMA exclusions were needed** (see
-[`notebooks/03_baselines.ipynb`](notebooks/03_baselines.ipynb) for the
-per-stock convergence log, kept even though empty this run).
+<p align="center">
+  <img src="results/plots/lstm_pred_vs_actual.png" alt="LSTM predicted vs actual price, best/average/worst case" width="640">
+</p>
 
-### The honest finding: low RMSE ≠ predictive skill
+<p align="center">
+  <img src="results/plots/eda_correlation_heatmap.png" alt="Intra- vs inter-sector return correlation heatmap" width="640">
+</p>
 
-| | Naive | Linear Regression | ARIMA |
-|---|---|---|---|
-| **RMSE wins** (of 40 stocks) | **29** | 0 | 11 |
-| **Mean directional accuracy** | **2.6%** | 48.7% | 49.9% |
-
-Naive wins on RMSE most often — because day-to-day price moves are small
-relative to price level, "tomorrow = today" is a low-error prediction almost
-by definition on a near-random-walk series. But its **directional accuracy is
-~2.6%**, essentially zero, because its predicted change is *always exactly
-zero* — it can never be on the correct side of an actual up/down move except
-by the rare coincidence of a flat day. Linear regression and ARIMA score
-worse on raw RMSE but have directional accuracy near **50%** (real, if weak,
-directional signal — roughly coin-flip, not clearly better than chance, but
-non-zero unlike naive).
-
-**This is the central baseline lesson the LSTM has to beat:** a model can look
-good on RMSE while having no real predictive skill at all. Phase 4's
-evaluation explicitly checks LSTM directional accuracy against this ~50%
-baseline floor, not just its RMSE against naive's artificially-low number.
-
-Full per-stock results: [`results/baseline_metrics.csv`](results/baseline_metrics.csv).
-Predicted-vs-actual plots for best/average/worst cases (by relative RMSE):
-[`results/plots/baselines_pred_vs_actual.png`](results/plots/baselines_pred_vs_actual.png).
+<p align="center">
+  <img src="results/plots/lstm_loss_curves.png" alt="LSTM training vs validation loss curves" width="640">
+</p>
 
 ---
 
-## Phase 4 — LSTM (complete)
+## Key findings
 
-### Setup
+**The headline result: the LSTM did not beat the simpler models — anywhere.** Across all four sectors, its ability to predict *direction* (will tomorrow's price be higher or lower than today's) was statistically indistinguishable from a coin flip, exactly matching linear regression and ARIMA — and its prediction *error* (RMSE) was two to five times worse than every other model, despite roughly 30 epochs of training per stock versus none for the baselines.
 
-- **One LSTM per stock** (40 models, not per-sector): a quick benchmark showed
-  ~7–12s per stock with early stopping, so the full run finishes in ~6.5
-  minutes — no compute-driven compromise needed.
-- **Architecture** ([`src/lstm_model.py`](src/lstm_model.py)): 2 stacked LSTM
-  layers (64 units each), `Dropout(0.2)`, Dense(1) head; Adam + MSE; early
-  stopping on validation loss (patience 10, best weights restored). 30-day
-  input sequences of the 9 scaled engineered features — never raw OHLCV.
-- **Same target, cutoff, and metrics as the baselines** — `compute_metrics`
-  from Phase 3 is reused unchanged, so all four models are scored identically.
-- **No rows lost at split boundaries**: val/test sequences borrow the trailing
-  29 days of the preceding split as lookback context (already-realised past
-  data, not leakage), keeping the exact Phase 2/3 split sizes.
-- **Target scaled with a train-only-fit scaler** (predictions
-  inverse-transformed back to INR before scoring) — extending the "fit on
-  train only" rule to the target.
+That second half is the more interesting failure, and it's diagnosable rather than mysterious. Looking at the chart above, on stocks that rallied to new highs during the test period (Marico is the clearest example), the LSTM's predictions flatten out near the top of the price range it saw during training and never catch up to the real, higher prices that followed. This isn't a bug — it's a structural consequence of how the model was trained: its output scaler was fit only on training-period prices (correctly, to avoid leaking future information), so it has no way to output a number outside the range it learned from, the same way a student can't answer an exam question about material the course never covered. The simpler models don't have this problem because they don't try to learn a price range at all — the naive model just repeats today's price, and ARIMA anchors to it each step.
 
-### The honest result: the LSTM did not beat the baselines
+The more revealing test, though, is not RMSE but **directional accuracy** — whether a model can consistently call up-or-down correctly, which is the version of "predicting the market" that would actually matter to a trader. Here the naive model's near-zero score is itself informative: because it always "predicts" no change, it can never be right about a real up or down move except by accident, which quantifies just how easy it is for a low-error model to have zero actual predictive skill. Linear regression and ARIMA land close to 50% — essentially a coin flip, but a genuine one, since they at least commit to a direction each day. **The LSTM's job was to clear that ~50% bar by a meaningful margin. It didn't, in any of the four sectors** — every gap versus the best baseline was within about one percentage point, statistical noise around a coin flip.
 
-From [`results/final_comparison.csv`](results/final_comparison.csv)
-(40 stocks, zero training failures):
-
-| Sector | LSTM dir. acc. | Best baseline dir. acc. | Verdict |
-|---|---|---|---|
-| Information Technology | 49.5% | 49.9% | **Tied** (−0.5pp) |
-| Banking & Financial Services | 50.2% | 51.0% | **Tied** (−0.8pp) |
-| Energy | 50.9% | 50.9% | **Tied** (+0.0pp) |
-| FMCG | 50.0% | 49.0% | **Tied** (+0.9pp) |
-
-**The LSTM tied the best baseline on directional accuracy in all four sectors
-(all gaps within ±1pp of a coin flip) while posting substantially worse RMSE,
-at far higher training cost.** RMSE win counts across 40 stocks remain
-naive 29 / ARIMA 11 / **LSTM 0**.
-
-### Why the LSTM's RMSE is worse — a real, diagnosable failure mode
-
-The predicted-vs-actual plots
-([`results/plots/lstm_pred_vs_actual.png`](results/plots/lstm_pred_vs_actual.png))
-show the mechanism clearly: on stocks that **rallied above their training-period
-price range** (e.g. Marico), the LSTM's predictions plateau near the top of the
-range it was trained on and never catch up. The target scaler is fit on train
-only (correct — anything else leaks), so test prices above the training maximum
-map to scaled targets outside anything the network ever saw, and a regression
-net has no reason to output beyond its training range. Naive/ARIMA are immune
-*by construction* — they anchor to today's actual price.
-
-There is a second-order artifact worth naming too: a model stuck below the
-current price predicts "down" every day, so its directional accuracy converges
-to the fraction of down days (~48% on Marico's rallying test period — exactly
-what we observe). Both effects and the honest caveats are documented in
-[`notebooks/04_lstm.ipynb`](notebooks/04_lstm.ipynb).
-
-**The right fix — future work:** predict *returns* (scale-free) rather than
-price levels. That redesign is beyond this project's spec, but it's the
-correct next step, and knowing *why* is the point of this project.
-
-### An infrastructure gotcha worth documenting
-
-On this environment (TF 2.21 + Keras 3.15, Python 3.12, macOS arm64),
-importing `pandas`/`scikit-learn` **before** `tensorflow` makes
-`model.fit()` with an `EarlyStopping` callback deadlock at 0% CPU,
-reproducibly (verified by systematic isolation). Importing TensorFlow first
-fixes it. `notebooks/04_lstm.ipynb` imports TF as its very first statement and
-[`src/lstm_model.py`](src/lstm_model.py) documents the constraint.
-
-Loss curves for the three representative stocks:
-[`results/plots/lstm_loss_curves.png`](results/plots/lstm_loss_curves.png).
+**Bottom line for a hiring manager:** deep learning is not a free upgrade over classical time-series methods — on this task, with this feature set, it added substantial training cost and complexity for measurably worse price accuracy and no directional edge. That's a legitimate, common outcome in applied ML, and reporting it plainly — rather than cherry-picking a metric that looks better — is the actual differentiator of this project versus a typical "I built a stock LSTM" portfolio piece.
 
 ---
 
-## Phase 5 — Deployment (complete)
+## Tech stack
 
-### App (`app/app.py`)
-
-- **Sidebar:** sector dropdown, then a stock dropdown filtered to that
-  sector — both populated live from `config/universe.json`, not hard-coded.
-- **Main chart:** actual vs. LSTM-predicted `Adj Close` (₹) over the test
-  period (Plotly), with an optional toggle to overlay naive/linear
-  regression/ARIMA predictions too — useful given the whole project is about
-  comparing models honestly, not just showcasing the LSTM.
-- **Metrics panel:** RMSE, MAE, MAPE, directional accuracy for the LSTM on
-  the selected stock.
-- **Model comparison expander:** the full 4-model table for that stock.
-- **Sector summary:** the Phase 4 honest verdict table, recomputed live from
-  `results/final_comparison.csv` (cheap pandas aggregation over an
-  already-precomputed file — not a retrain) so it can't drift out of sync
-  with the underlying numbers.
-- **Disclaimer** rendered prominently at the top of every page.
-
-### Architecture rule: no retraining or live fetches at request time
-
-The app reads only three precomputed artifacts — `config/universe.json`,
-`results/final_comparison.csv`, `results/predictions/*.csv` (one file per
-stock: `date, actual, naive, linreg, arima, lstm` for the test period,
-produced by Phase 3/4's notebooks and merged in
-[`notebooks/04_lstm.ipynb`](notebooks/04_lstm.ipynb)). It never calls
-`yfinance` or retrains a model, so page loads stay fast and no real user can
-trigger Yahoo Finance rate-limiting.
-
-### Deployment
-
-Two `requirements.txt` files, deliberately:
-
-- **repo-root `requirements.txt`** — the full notebook stack (TensorFlow,
-  `pandas-ta`, `statsmodels`, Jupyter) needed to *reproduce the analysis*.
-  Some of it requires Python ≥3.12.
-- **[`app/requirements.txt`](app/requirements.txt)** — just `streamlit`,
-  `pandas`, `plotly`. This is what Streamlit Community Cloud is configured to
-  use (set via the app's Advanced Settings → Python dependencies file), so
-  the deployed app's build stays fast and never needs TensorFlow at all.
-
-Full deployment steps, including why this split matters, are in
-[DEPLOY.md](DEPLOY.md). Local testing used Streamlit's official
-`AppTest` harness — verified zero exceptions across all 40 stocks × all 4
-sectors, dropdown filtering, the baseline-overlay checkbox, and every
-metric/dataframe element, before deploying.
+- **Language:** Python 3.12 (required by `pandas-ta`'s current PyPI release)
+- **Data:** `yfinance` (NSE `.NS` tickers), 5 years daily, adjusted close
+- **Feature engineering:** `pandas-ta`
+- **Baselines:** `scikit-learn` (linear regression), `statsmodels` (ARIMA)
+- **Deep learning:** TensorFlow / Keras (LSTM)
+- **Evaluation:** custom `compute_metrics` (RMSE, MAE, MAPE, directional accuracy) shared identically across all 4 models
+- **Deployment:** Streamlit + Streamlit Community Cloud, Plotly for charts
+- **Notebooks:** Jupyter, executed end-to-end via `nbconvert` (no manual-only cells)
+- **Version control:** Git + GitHub
 
 ---
 
-## Repository structure
-
-```
-├── README.md
-├── DEPLOY.md                  # Streamlit Community Cloud deployment steps
-├── requirements.txt            # full notebook stack (local dev/reproduction)
-├── .gitignore
-├── config/
-│   └── universe.json          # locked, dated top-10-per-sector ticker list
-├── data/                      # raw + processed per-ticker CSVs (gitignored, regenerable)
-├── src/
-│   ├── universe.py            # fetch top 10 per sector by live market cap
-│   ├── data_loader.py         # reusable historical-data loader + cache
-│   ├── features.py            # compute_features(): engineered indicators via pandas-ta
-│   ├── scaling.py             # chronological split + train-only StandardScaler
-│   ├── baselines.py           # naive / linear regression / ARIMA (walk-forward)
-│   ├── evaluate.py            # compute_metrics(): RMSE, MAE, MAPE, directional accuracy
-│   └── lstm_model.py          # sequence building, LSTM architecture, training loop
-├── notebooks/
-│   ├── 01_universe_and_eda.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_baselines.ipynb
-│   └── 04_lstm.ipynb
-├── app/
-│   ├── app.py                  # Streamlit dashboard (reads results/ only)
-│   └── requirements.txt        # lean deps for the deployed app (see DEPLOY.md)
-└── results/
-    ├── baseline_metrics.csv       # per-stock RMSE/MAE/MAPE/DirAcc for all 3 baselines
-    ├── final_comparison.csv       # all 4 models side by side, per stock
-    ├── predictions/                # per-stock test-period predictions, all 4 models
-    └── plots/                     # EDA, features, baseline + LSTM figures
-```
-
-## Reproduce Phases 1–4
+## How to reproduce locally
 
 ```bash
+git clone https://github.com/pranavchauhann/sector-comparative-equity-lstm.git
+cd sector-comparative-equity-lstm
+
 python3.12 -m venv .venv && source .venv/bin/activate   # pandas-ta requires Python >=3.12
 pip install -r requirements.txt
 
+# Build the data pipeline (Phases 1-2)
 python src/universe.py                     # build & lock config/universe.json
-python src/data_loader.py                  # cache 5yr data for all 40 tickers
-jupyter nbconvert --to notebook --execute \
-  --inplace notebooks/01_universe_and_eda.ipynb          # Phase 1 EDA
-jupyter nbconvert --to notebook --execute \
-  --inplace notebooks/02_feature_engineering.ipynb       # Phase 2 features + scaling demo
-jupyter nbconvert --to notebook --execute \
-  --inplace notebooks/03_baselines.ipynb                 # Phase 3 baselines + metrics
-jupyter nbconvert --to notebook --execute \
-  --inplace notebooks/04_lstm.ipynb                      # Phase 4 LSTM (~7 min on CPU)
-```
+python src/data_loader.py                  # cache 5yr adjusted data for all 40 tickers
 
-All notebooks run top-to-bottom with no manual intervention. They **read** the
-locked universe; to refresh the market-cap snapshot, re-run `src/universe.py`.
+# Run the notebooks in order — each runs top-to-bottom with no manual steps
+jupyter nbconvert --to notebook --execute --inplace notebooks/01_universe_and_eda.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/02_feature_engineering.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/03_baselines.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/04_lstm.ipynb   # ~6-7 min on CPU
 
-## Run the app locally
-
-```bash
-# uses the same .venv from above — the app only needs streamlit/pandas/plotly,
-# already included in the full requirements.txt
+# Run the dashboard locally
 streamlit run app/app.py
 ```
 
-Requires `config/universe.json`, `results/final_comparison.csv`, and
-`results/predictions/*.csv` to already exist (i.e. Phases 1–4 above have been
-run at least once). See [DEPLOY.md](DEPLOY.md) for deploying to Streamlit
-Community Cloud.
+To refresh the market-cap snapshot (rather than use the locked, dated one), re-run `python src/universe.py` explicitly — no other script does this automatically. Full Streamlit Community Cloud deployment steps (including why the app uses a separate, lean `app/requirements.txt`) are in [DEPLOY.md](DEPLOY.md).
 
-### Non-negotiable rules honoured
-No fabricated results (see Phase 3's honest RMSE-vs-directional-accuracy
-finding) · chronological splits only · scaler fit on train only · universe
-locked and dated · everything checked into Git as we go · every notebook runs
-end-to-end.
+---
+
+## Limitations & future work
+
+- **Price-level prediction, not returns.** As the Key Findings section shows, predicting a scaled *price level* structurally caps the LSTM at the training period's price range. Predicting *returns* instead (scale-free, no upper bound issue) is the standard fix and the most promising next step.
+- **No macroeconomic, news, or sentiment features.** All 9 features are derived purely from each stock's own OHLCV history. Sector-wide or market-wide signals (interest rates, crude oil prices for Energy, USD/INR for IT, earnings calendars) are absent, and Phase 1's EDA already shows meaningful *inter*-sector correlation that pure single-stock features can't capture.
+- **Single-stock models, not a portfolio approach.** Each of the 40 LSTMs is trained independently; there's no shared representation across a sector or joint portfolio-level objective, which is likely part of why sector-wide patterns aren't being exploited.
+- **LSTM architecture was not extensively tuned.** Units (64), dropout (0.2), sequence length (30 days), and learning rate all used reasonable defaults rather than a search — deliberate, given the point of this project was a fair baseline comparison rather than squeezing out maximum LSTM performance, but it means the "LSTM loses" finding is about this specific, untuned architecture, not a proof that no LSTM configuration could do better.
+- **ARIMA order was fixed, not searched.** `(5,1,0)` with a short fallback list was used per stock rather than a full grid search (e.g. via `auto_arima`), since ARIMA's role here is a classical reference point, not the model under study.
+
+## License
+
+[MIT](LICENSE)
