@@ -30,3 +30,4 @@ ipykernel>=6.29
 
 # Deployment (Phase 5)
 streamlit>=1.35
+plotly>=5.20

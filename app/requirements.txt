@@ -1,0 +1,16 @@
+# Lean dependency set for the deployed Streamlit app only.
+#
+# app/app.py reads precomputed CSVs/JSON (config/universe.json,
+# results/final_comparison.csv, results/predictions/*.csv) — it never
+# retrains a model or calls pandas-ta / scikit-learn / statsmodels /
+# tensorflow / yfinance. Those heavier, Python-3.12-only packages live in
+# the repo-root requirements.txt for reproducing the notebooks locally, but
+# would slow down (and could break, since pandas-ta requires Python >=3.12)
+# a Streamlit Community Cloud build for no benefit to the app itself.
+#
+# In the Streamlit Community Cloud app settings, set the "Python dependencies
+# file" (Advanced settings) to app/requirements.txt so this lean file is used
+# instead of the repo-root one.
+streamlit>=1.35
+pandas>=2.1
+plotly>=5.20

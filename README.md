@@ -10,6 +10,9 @@ Energy, and FMCG** — and honestly compare an LSTM against simpler baselines
 > limited by market efficiency; the point of the project is a *rigorous, honest*
 > model comparison, not a trading signal.
 
+**Live demo:** _add the Streamlit Community Cloud URL here once deployed —
+see [DEPLOY.md](DEPLOY.md)._
+
 ### Why this framing
 Most stock-LSTM portfolio projects skip baselines and report inflated accuracy.
 The differentiator here is intellectual honesty: strong baselines, chronological
@@ -26,8 +29,8 @@ where that is what the data shows.
 | **2** | Feature engineering & scaling pipeline | ✅ **Done** |
 | **3** | Baselines (naive, linear regression, ARIMA) | ✅ **Done** |
 | **4** | LSTM (2 stacked layers, early stopping) | ✅ **Done** |
-| 5 | Streamlit app + Community Cloud deploy | ⏳ Next |
-| 6 | README polish + final GitHub push | ⬜ |
+| **5** | Streamlit app + Community Cloud deploy | ✅ **Done** |
+| 6 | README polish + final GitHub push | ⏳ Next |
 
 ---
 
@@ -305,11 +308,61 @@ Loss curves for the three representative stocks:
 
 ---
 
+## Phase 5 — Deployment (complete)
+
+### App (`app/app.py`)
+
+- **Sidebar:** sector dropdown, then a stock dropdown filtered to that
+  sector — both populated live from `config/universe.json`, not hard-coded.
+- **Main chart:** actual vs. LSTM-predicted `Adj Close` (₹) over the test
+  period (Plotly), with an optional toggle to overlay naive/linear
+  regression/ARIMA predictions too — useful given the whole project is about
+  comparing models honestly, not just showcasing the LSTM.
+- **Metrics panel:** RMSE, MAE, MAPE, directional accuracy for the LSTM on
+  the selected stock.
+- **Model comparison expander:** the full 4-model table for that stock.
+- **Sector summary:** the Phase 4 honest verdict table, recomputed live from
+  `results/final_comparison.csv` (cheap pandas aggregation over an
+  already-precomputed file — not a retrain) so it can't drift out of sync
+  with the underlying numbers.
+- **Disclaimer** rendered prominently at the top of every page.
+
+### Architecture rule: no retraining or live fetches at request time
+
+The app reads only three precomputed artifacts — `config/universe.json`,
+`results/final_comparison.csv`, `results/predictions/*.csv` (one file per
+stock: `date, actual, naive, linreg, arima, lstm` for the test period,
+produced by Phase 3/4's notebooks and merged in
+[`notebooks/04_lstm.ipynb`](notebooks/04_lstm.ipynb)). It never calls
+`yfinance` or retrains a model, so page loads stay fast and no real user can
+trigger Yahoo Finance rate-limiting.
+
+### Deployment
+
+Two `requirements.txt` files, deliberately:
+
+- **repo-root `requirements.txt`** — the full notebook stack (TensorFlow,
+  `pandas-ta`, `statsmodels`, Jupyter) needed to *reproduce the analysis*.
+  Some of it requires Python ≥3.12.
+- **[`app/requirements.txt`](app/requirements.txt)** — just `streamlit`,
+  `pandas`, `plotly`. This is what Streamlit Community Cloud is configured to
+  use (set via the app's Advanced Settings → Python dependencies file), so
+  the deployed app's build stays fast and never needs TensorFlow at all.
+
+Full deployment steps, including why this split matters, are in
+[DEPLOY.md](DEPLOY.md). Local testing used Streamlit's official
+`AppTest` harness — verified zero exceptions across all 40 stocks × all 4
+sectors, dropdown filtering, the baseline-overlay checkbox, and every
+metric/dataframe element, before deploying.
+
+---
+
 ## Repository structure
 
 ```
 ├── README.md
-├── requirements.txt
+├── DEPLOY.md                  # Streamlit Community Cloud deployment steps
+├── requirements.txt            # full notebook stack (local dev/reproduction)
 ├── .gitignore
 ├── config/
 │   └── universe.json          # locked, dated top-10-per-sector ticker list
@@ -327,12 +380,15 @@ Loss curves for the three representative stocks:
 │   ├── 02_feature_engineering.ipynb
 │   ├── 03_baselines.ipynb
 │   └── 04_lstm.ipynb
+├── app/
+│   ├── app.py                  # Streamlit dashboard (reads results/ only)
+│   └── requirements.txt        # lean deps for the deployed app (see DEPLOY.md)
 └── results/
     ├── baseline_metrics.csv       # per-stock RMSE/MAE/MAPE/DirAcc for all 3 baselines
     ├── final_comparison.csv       # all 4 models side by side, per stock
+    ├── predictions/                # per-stock test-period predictions, all 4 models
     └── plots/                     # EDA, features, baseline + LSTM figures
 ```
-*(Phase 5 adds `app/app.py`.)*
 
 ## Reproduce Phases 1–4
 
@@ -354,6 +410,19 @@ jupyter nbconvert --to notebook --execute \
 
 All notebooks run top-to-bottom with no manual intervention. They **read** the
 locked universe; to refresh the market-cap snapshot, re-run `src/universe.py`.
+
+## Run the app locally
+
+```bash
+# uses the same .venv from above — the app only needs streamlit/pandas/plotly,
+# already included in the full requirements.txt
+streamlit run app/app.py
+```
+
+Requires `config/universe.json`, `results/final_comparison.csv`, and
+`results/predictions/*.csv` to already exist (i.e. Phases 1–4 above have been
+run at least once). See [DEPLOY.md](DEPLOY.md) for deploying to Streamlit
+Community Cloud.
 
 ### Non-negotiable rules honoured
 No fabricated results (see Phase 3's honest RMSE-vs-directional-accuracy
