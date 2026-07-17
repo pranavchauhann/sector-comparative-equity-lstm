@@ -1,12 +1,12 @@
 # Sector-Comparative Indian Equity Forecasting with LSTM
 
-Honest, baseline-anchored comparison of an LSTM against naive/linear-regression/ARIMA models for next-day price prediction across 40 NSE stocks in 4 sectors — built to show *where* deep learning helps and where it doesn't, not to oversell it.
+Honest, baseline-anchored comparison of an LSTM against naive/linear-regression/ARIMA models for next-day, next-month, and next-year price prediction across 40 NSE stocks in 4 sectors — built to show *where* deep learning helps and where it doesn't, not to oversell it.
 
 ## 🔗 Live demo
 
 **[sector-comparative-equity-lstm.streamlit.app](https://sector-comparative-equity-lstm.streamlit.app)**
 
-Pick a sector and stock, see actual vs. LSTM-predicted price, and the full 4-model comparison — including the sector-by-sector verdict on whether the LSTM actually earned its complexity.
+Pick a sector, stock, and forecast horizon (day / month / year); see actual vs. LSTM-predicted price and the full model comparison — including the sector-by-sector verdict on whether the LSTM actually earned its complexity.
 
 > **Not investment advice.** This is a portfolio project demonstrating ML technique on Indian equity data. Stock-price predictability is fundamentally limited by market efficiency; the point of this project is a *rigorous, honest* model comparison, not a trading signal.
 
@@ -44,7 +44,10 @@ The result is locked to [`config/universe.json`](config/universe.json) with the 
 | Naive | tomorrow = today |
 | Linear Regression | today's 9 engineered features → tomorrow's close |
 | ARIMA(5,1,0) | walk-forward one-step: append each day's realised close, forecast one step ahead |
-| LSTM | 2 stacked LSTM layers (64 units), Dropout(0.2), Dense head, on 30-day sequences of scaled features |
+| LSTM (price target) | 2 stacked LSTM layers (64 units), Dropout(0.2), Dense head, on 30-day sequences of scaled features |
+| LSTM (returns target) | same architecture, but predicts the next-day **return** and reconstructs price as `today × (1 + r)` — the fix for the price-target model's diagnosed failure (see Key findings) |
+
+**Beyond next-day:** the returns-target LSTM is also trained at **next-month (21 trading days)** and **next-year (252 trading days)** horizons ([`notebooks/06_multi_horizon.ipynb`](notebooks/06_multi_horizon.ipynb)), with two extra safeguards that longer horizons force: **purged splits** (the last *h* rows of train and val are dropped, because an *h*-day-ahead target realised inside the next split's time window is leakage) and an **"always up" trivial bar** for directional accuracy (in a mostly-rising market, "up" is a good guess by default, so 50% is not the right benchmark at long horizons).
 
 **Chronological split — why it matters:** train/val/test are split **70/15/15 by date, never shuffled**. Random splitting on time series lets the model train on data from *after* the point it's being tested on — a common and serious leakage bug in naive implementations. Every model here is also held to the same **"predict day *t+1* using only information through day *t*"** cutoff, so no model gets an informational advantage over another — including the LSTM, whose 30-day input sequences borrow lookback context from the immediately preceding split (already-realised past data, not leakage) rather than losing 29 rows of test data to warm-up.
 
@@ -65,6 +68,28 @@ Full per-stock numbers: [`results/final_comparison.csv`](results/final_compariso
 | **Overall (40 stocks)** | — | — | — | — | **2.6%** | **48.7%** | **50.0%** | **50.1%** |
 
 **RMSE win count across all 40 stocks: Naive 29, ARIMA 11, Linear Regression 0, LSTM 0.**
+
+### The returns-target fix (Phase 4b)
+
+Re-targeting the same LSTM at next-day **returns** instead of price levels ([`notebooks/05_lstm_returns.ipynb`](notebooks/05_lstm_returns.ipynb)) repaired the error problem exactly as the diagnosis predicted — **improving MAPE on 40 of 40 stocks**:
+
+| | Naive | LinReg | ARIMA | LSTM (price) | **LSTM (returns)** |
+|---|---|---|---|---|---|
+| Mean MAPE (error rate) | 1.25% | 1.42% | 1.26% | 4.31% | **1.28%** |
+| Mean directional accuracy | 2.6% | 48.7% | 50.0% | 50.1% | **48.3%** |
+| RMSE wins (of 40) | 24 | 0 | 9 | 0 | **7** |
+
+The biggest gains landed precisely on the stocks diagnosed as extrapolation failures (Shriram Finance 22.2%→1.7% MAPE, SBI 15.7%→1.1%, Marico 8.0%→0.9%). Directional accuracy stayed a coin flip — fixing the target representation repairs price error; it cannot manufacture predictive signal the features don't contain.
+
+### Multi-horizon results (Phase 4c)
+
+| Horizon | Naive MAPE | LinReg MAPE | LSTM MAPE | LSTM Dir. Acc. | "Always up" bar |
+|---|---|---|---|---|---|
+| Next day | **1.25%** | 1.30% | 1.28% | 48.9% | 48.2% |
+| Next month (21d) | **6.39%** | 8.09% | 7.89% | 48.1% | 50.4% |
+| Next year (252d) | **17.56%** | 83.17% | 35.54% | 62.0% | 54.6% |
+
+Error compounds with horizon for *every* model, and naive ("price unchanged") remains the hardest error benchmark to beat at all three. The next-year LSTM's apparent +7.4pp directional edge over "always up" carries heavy caveats stated in the notebook: purging consumed the entire validation split (no early stopping), adjacent training targets overlap by 251 of 252 days (≈2 independent annual observations per stock), and JIOFIN couldn't be trained at all. Treat it as illustrative, not validated.
 
 <p align="center">
   <img src="results/plots/lstm_pred_vs_actual.png" alt="LSTM predicted vs actual price, best/average/worst case" width="640">
@@ -88,7 +113,11 @@ That second half is the more interesting failure, and it's diagnosable rather th
 
 The more revealing test, though, is not RMSE but **directional accuracy** — whether a model can consistently call up-or-down correctly, which is the version of "predicting the market" that would actually matter to a trader. Here the naive model's near-zero score is itself informative: because it always "predicts" no change, it can never be right about a real up or down move except by accident, which quantifies just how easy it is for a low-error model to have zero actual predictive skill. Linear regression and ARIMA land close to 50% — essentially a coin flip, but a genuine one, since they at least commit to a direction each day. **The LSTM's job was to clear that ~50% bar by a meaningful margin. It didn't, in any of the four sectors** — every gap versus the best baseline was within about one percentage point, statistical noise around a coin flip.
 
-**Bottom line for a hiring manager:** deep learning is not a free upgrade over classical time-series methods — on this task, with this feature set, it added substantial training cost and complexity for measurably worse price accuracy and no directional edge. That's a legitimate, common outcome in applied ML, and reporting it plainly — rather than cherry-picking a metric that looks better — is the actual differentiator of this project versus a typical "I built a stock LSTM" portfolio piece.
+**The diagnosis was then tested, not just asserted.** Changing *one thing* — the LSTM's target, from price level to daily return — while freezing the architecture, features, splits, and metrics, collapsed the error rate from 4.31% to 1.28% MAPE and improved every single one of the 40 stocks, with the largest gains landing exactly on the stocks the diagnosis had flagged. That's the engineering-judgment part of the story: identify a failure mode from the evidence, predict what will fix it, change one variable, and confirm. Equally important is what the fix *didn't* do — directional accuracy stayed at a coin flip, because better target representation can't create signal the features don't contain.
+
+**Extending to longer horizons made the market's difficulty more visible, not less.** At one month ahead, every model's error roughly quintuples and none beats "assume the price doesn't change." At one year ahead, the evaluation itself starts to break down — five years of data contains only about two independent one-year windows per stock, leakage-purging eats the entire validation split, and a rising market means a model can look "62% directionally accurate" mostly by learning to always say up. Recognising when a question is at the edge of what the data can answer — and saying so — matters more than the headline number.
+
+**Bottom line for a hiring manager:** deep learning is not a free upgrade over classical time-series methods — on this task, with this feature set, it added substantial training cost and complexity for measurably worse price accuracy and no directional edge; a diagnosed one-variable fix recovered the error gap but not a directional one. That's a legitimate, common outcome in applied ML, and reporting it plainly — rather than cherry-picking a metric that looks better — is the actual differentiator of this project versus a typical "I built a stock LSTM" portfolio piece.
 
 ---
 
@@ -123,7 +152,9 @@ python src/data_loader.py                  # cache 5yr adjusted data for all 40 
 jupyter nbconvert --to notebook --execute --inplace notebooks/01_universe_and_eda.ipynb
 jupyter nbconvert --to notebook --execute --inplace notebooks/02_feature_engineering.ipynb
 jupyter nbconvert --to notebook --execute --inplace notebooks/03_baselines.ipynb
-jupyter nbconvert --to notebook --execute --inplace notebooks/04_lstm.ipynb   # ~6-7 min on CPU
+jupyter nbconvert --to notebook --execute --inplace notebooks/04_lstm.ipynb          # ~6-7 min on CPU
+jupyter nbconvert --to notebook --execute --inplace notebooks/05_lstm_returns.ipynb  # ~7 min: returns-target fix
+jupyter nbconvert --to notebook --execute --inplace notebooks/06_multi_horizon.ipynb # ~15 min: day/month/year horizons
 
 # Run the dashboard locally
 streamlit run app/app.py
@@ -135,7 +166,8 @@ To refresh the market-cap snapshot (rather than use the locked, dated one), re-r
 
 ## Limitations & future work
 
-- **Price-level prediction, not returns.** As the Key Findings section shows, predicting a scaled *price level* structurally caps the LSTM at the training period's price range. Predicting *returns* instead (scale-free, no upper bound issue) is the standard fix and the most promising next step.
+- ~~**Price-level prediction, not returns.**~~ **Done (Phase 4b):** the returns-target LSTM confirmed the diagnosis, cutting MAPE from 4.31% to 1.28% and improving all 40 stocks — while directional accuracy stayed at a coin flip, as expected.
+- **The next-year horizon is only weakly evaluable.** Five years of daily data holds ~2 independent one-year windows per stock; after leakage purging there is no validation split left for early stopping, and directional accuracy is inflated by the sample's upward drift. A materially longer history (10-15+ years) would be needed to evaluate annual forecasts credibly.
 - **No macroeconomic, news, or sentiment features.** All 9 features are derived purely from each stock's own OHLCV history. Sector-wide or market-wide signals (interest rates, crude oil prices for Energy, USD/INR for IT, earnings calendars) are absent, and Phase 1's EDA already shows meaningful *inter*-sector correlation that pure single-stock features can't capture.
 - **Single-stock models, not a portfolio approach.** Each of the 40 LSTMs is trained independently; there's no shared representation across a sector or joint portfolio-level objective, which is likely part of why sector-wide patterns aren't being exploited.
 - **LSTM architecture was not extensively tuned.** Units (64), dropout (0.2), sequence length (30 days), and learning rate all used reasonable defaults rather than a search — deliberate, given the point of this project was a fair baseline comparison rather than squeezing out maximum LSTM performance, but it means the "LSTM loses" finding is about this specific, untuned architecture, not a proof that no LSTM configuration could do better.
