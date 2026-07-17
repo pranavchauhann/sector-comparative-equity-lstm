@@ -24,6 +24,7 @@ UNIVERSE_PATH = ROOT / "config" / "universe.json"
 FINAL_COMPARISON_PATH = ROOT / "results" / "final_comparison_with_returns_lstm.csv"
 MULTI_HORIZON_PATH = ROOT / "results" / "multi_horizon_comparison.csv"
 HORIZON_PRED_DIR = ROOT / "results" / "predictions_horizons"
+LATEST_FORECASTS_PATH = ROOT / "results" / "latest_forecasts.csv"
 
 HORIZON_LABELS = {          # UI label -> directory/key in the results CSV
     "Next day": "next_day",
@@ -59,6 +60,12 @@ def load_final_comparison() -> pd.DataFrame:
 @st.cache_data
 def load_multi_horizon() -> pd.DataFrame:
     return pd.read_csv(MULTI_HORIZON_PATH)
+
+
+@st.cache_data
+def load_latest_forecasts() -> pd.DataFrame:
+    return pd.read_csv(LATEST_FORECASTS_PATH,
+                       parse_dates=["as_of_date", "target_date"])
 
 
 @st.cache_data
@@ -136,6 +143,37 @@ def main() -> None:
         f"as of {meta['fetch_date']} (source: {meta['market_cap_source']})."
     )
 
+    # ---- Forecast hero: the prediction itself, front and centre ----
+    fc = load_latest_forecasts()
+    fc_tk = fc[fc["ticker"] == ticker].sort_values("h_days")
+    if not fc_tk.empty:
+        as_of = fc_tk["as_of_date"].iloc[0]
+        last_price = fc_tk["last_price"].iloc[0]
+        st.markdown(f"### {ticker} — LSTM forecast")
+        cols = st.columns(4)
+        cols[0].metric("Last close", f"₹{last_price:,.2f}",
+                       help=f"As of {as_of.date()}")
+        hz_title = {"next_day": "Next day", "next_month": "Next month",
+                    "next_year": "Next year"}
+        by_hz = {r["horizon"]: r for _, r in fc_tk.iterrows()}
+        for col, hz in zip(cols[1:], ["next_day", "next_month", "next_year"]):
+            if hz in by_hz:
+                r = by_hz[hz]
+                col.metric(hz_title[hz], f"₹{r['pred_price']:,.2f}",
+                           delta=f"{r['pred_return_pct']:+.2f}%",
+                           help=f"Target date ≈ {r['target_date'].date()}")
+            else:
+                col.metric(hz_title[hz], "—",
+                           help="Insufficient history to train this horizon")
+        st.caption(
+            f"Forecasts generated from data through {as_of.date()}. They are "
+            "unverifiable until their target dates arrive, and the backtest "
+            "below shows this model has **no directional edge over simple "
+            "baselines** — treat these as illustrations of the method, not "
+            "as advice."
+        )
+        st.divider()
+
     if horizon == "next_year":
         st.info(
             "**Next-year caveat:** with 5 years of daily data there are only "
@@ -170,19 +208,34 @@ def main() -> None:
         f"{horizon_label.lower()} *return* and the price is reconstructed as "
         "today's price × (1 + predicted return)."
     )
-    show_baselines = st.checkbox(
+    col_a, col_b = st.columns(2)
+    show_baselines = col_a.checkbox(
         "Also show baselines (naive 'price unchanged' / linear regression)",
         value=False,
     )
+    show_forward = col_b.checkbox(
+        "Show forward forecasts from the latest data (next day / month / year)",
+        value=True,
+    )
 
     fig = go.Figure()
+    # Invisible baseline slightly below the data so the area fill hugs the
+    # chart bottom (Chart.js-style `fill: true`) instead of stretching to 0.
+    baseline = float(min(preds["actual"].min(), preds["lstm"].min())) * 0.985
+    fig.add_trace(go.Scatter(
+        x=preds["date"], y=[baseline] * len(preds), mode="lines",
+        line=dict(width=0), hoverinfo="skip", showlegend=False,
+    ))
     fig.add_trace(go.Scatter(
         x=preds["date"], y=preds["actual"], name="Actual",
-        line=dict(color=MODEL_COLORS["actual"], width=2.2),
+        line=dict(color=MODEL_COLORS["actual"], width=2.2, shape="spline",
+                  smoothing=0.4),
+        fill="tonexty", fillcolor="rgba(0, 0, 0, 0.05)",
     ))
     fig.add_trace(go.Scatter(
         x=preds["date"], y=preds["lstm"], name="LSTM (returns-target)",
         line=dict(color=MODEL_COLORS["lstm"], width=1.6, dash="dash"),
+        opacity=0.9,
     ))
     if show_baselines:
         fig.add_trace(go.Scatter(
@@ -195,10 +248,63 @@ def main() -> None:
             line=dict(color=MODEL_COLORS["linreg"], width=1.2, dash="dot"),
             opacity=0.75,
         ))
+    if show_forward:
+        fc = load_latest_forecasts()
+        fc_tk = fc[fc["ticker"] == ticker].sort_values("h_days")
+        if not fc_tk.empty:
+            as_of = fc_tk["as_of_date"].iloc[0]
+            last_price = fc_tk["last_price"].iloc[0]
+            hz_short = {"next_day": "+1 day", "next_month": "+1 month",
+                        "next_year": "+1 year"}
+            # Dotted path from the last actual price through the three
+            # forward predictions, plus labelled diamond markers.
+            path_x = [as_of] + list(fc_tk["target_date"])
+            path_y = [last_price] + list(fc_tk["pred_price"])
+            fig.add_trace(go.Scatter(
+                x=path_x, y=path_y, mode="lines+markers",
+                name="Forward forecast (LSTM)",
+                line=dict(color="#8e44ad", width=2, dash="dot",
+                          shape="spline", smoothing=0.6),
+                marker=dict(size=9, color="#8e44ad",
+                            line=dict(color="#ffffff", width=2)),
+                hoverinfo="skip",
+            ))
+            # Per-horizon label placement: +1d and +1m sit almost on the same
+            # pixel at full zoom, so stagger them vertically; +1y hugs the
+            # right edge, so its label goes to the left of the point.
+            label_pos = {"next_day": "top left", "next_month": "bottom right",
+                         "next_year": "middle left"}
+            fig.add_trace(go.Scatter(
+                x=fc_tk["target_date"], y=fc_tk["pred_price"],
+                mode="text", showlegend=False,
+                text=[f"{hz_short[h]}: ₹{p:,.0f} ({r:+.1f}%)"
+                      for h, p, r in zip(fc_tk["horizon"], fc_tk["pred_price"],
+                                          fc_tk["pred_return_pct"])],
+                textposition=[label_pos[h] for h in fc_tk["horizon"]],
+                textfont=dict(size=11, color="#6c3483"),
+                hovertemplate="%{text}<extra>Forward forecast</extra>",
+            ))
+            missing = set(HORIZON_DAYS) - set(fc_tk["horizon"])
+            note = (f" No {'/'.join(sorted(missing)).replace('_', ' ')} "
+                    f"forecast for this stock (insufficient history)."
+                    if missing else "")
+            st.caption(
+                f"◆ Forward forecasts made from data as of "
+                f"{as_of.date()} (last close ₹{last_price:,.2f}). These are "
+                f"unverifiable until their target dates arrive — illustrative "
+                f"only, not investment advice.{note}"
+            )
+
     fig.update_layout(
-        yaxis_title="Adj Close (₹)", xaxis_title="Prediction made on",
+        yaxis=dict(title=None, tickprefix="₹", tickformat=",.0f",
+                   gridcolor="#e9ecef", zeroline=False),
+        xaxis=dict(title=None, showgrid=False),
         legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                    xanchor="right", x=1),
+                    xanchor="left", x=0,
+                    font=dict(size=13)),
+        font=dict(family="Inter, -apple-system, 'Segoe UI', sans-serif",
+                  color="#333333"),
+        plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=30, b=10), height=460,
         hovermode="x unified",
     )
