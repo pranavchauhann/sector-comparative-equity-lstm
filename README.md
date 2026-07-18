@@ -81,7 +81,7 @@ docker compose up -d app              # dashboard  → http://localhost:8501
 docker compose run --rm training      # full DVC pipeline, on demand
 ```
 
-*(Docker build verification is pending on this machine — see the status note in [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).)*
+*(Build-verified end-to-end: images built, containerized dashboard served, full pipeline ran in the training container, and the app picked up the fresh results through the shared volume — sizes and checklist in [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).)*
 
 ## Full reproduction guide (going deeper)
 
@@ -149,7 +149,7 @@ Python 3.12 · yfinance · pandas-ta · scikit-learn · statsmodels · TensorFlo
 - **Rule-based, not learned:** promotion thresholds (+5% MAPE, DirAcc floor) and drift thresholds (+50% rolling MAPE, PSI null-p95, >50% of universe) are hand-chosen and documented, not a learned meta-model. Defensible defaults, but they encode my judgment, not data.
 - **Batch, not streaming:** drift detection runs on a daily schedule after market close — a mid-day regime break is caught the next morning, not in real time.
 - **Single-node Docker, no orchestration:** compose on one machine; no Kubernetes, no scaling story, no health-check-driven restarts of the training job.
-- **Docker build verification pending:** the Dockerfiles are authored but not yet built/run on this machine (no Docker runtime available at authoring time) — [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md) carries the exact outstanding checklist. Docker Hub images not yet published (requires owner login).
+- **Docker Hub images not yet published** (requires owner login); the training image is heavy at 4.16 GB — TF wheels are the floor, but the app image's baked-in seed data could be trimmed (~400 MB of per-horizon CSVs the dashboard only partially reads).
 - **Shadow log bootstrap:** the live error stream was seeded by replaying the recent test window (documented in [docs/DRIFT_DETECTION.md](docs/DRIFT_DETECTION.md)); genuinely *live* accumulation starts from deployment forward.
 - **MLflow store is local:** SQLite + local artifacts, not a shared tracking server — right-sized for a solo project, wrong for a team.
 
