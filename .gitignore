@@ -23,6 +23,13 @@ models/
 # Streamlit
 .streamlit/secrets.toml
 
+# MLflow local tracking store (Phase 2) — run metadata (SQLite) + logged
+# artifacts. Local-only by design: DVC versions the canonical model
+# artifacts, git versions the code; this is queryable experiment history
+# for this machine.
+mlruns/
+mlflow.db
+
 # NOTE: config/universe.json is intentionally NOT ignored — the locked,
 # dated ticker universe must be version-controlled (see Non-Negotiable Rules).
 # NOTE: results/ (metrics CSVs + plots) is intentionally NOT ignored — these

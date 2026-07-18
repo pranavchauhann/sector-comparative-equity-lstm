@@ -31,3 +31,6 @@ ipykernel>=6.29
 # Deployment (Phase 5)
 streamlit>=1.35
 plotly>=5.20
+
+# Experiment tracking (Phase 2 of MLOps track)
+mlflow>=3.0
