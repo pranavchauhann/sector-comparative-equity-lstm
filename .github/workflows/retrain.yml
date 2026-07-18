@@ -1,0 +1,94 @@
+# Phase 3: Automated weekly retraining with a promotion gate.
+#
+# Every Sunday 00:00 UTC (and on demand via workflow_dispatch) this workflow
+# pulls the tracked data/models, re-fetches fresh market data (the fetch
+# stage uses a rolling 5-year window ending "today", so re-running it
+# extends the date range), re-runs the DVC pipeline, and then applies
+# src/promote_model.py's gate: the new models replace production ONLY if
+# directional accuracy has not regressed AND MAPE has not worsened by more
+# than 5% relative. A rejected candidate completes the workflow
+# successfully — it is a normal outcome, not a failure.
+#
+# Secrets required:
+#   GDRIVE_SERVICE_ACCOUNT_JSON — Google service-account key with access to
+#     the DVC gdrive remote folder (never hardcoded here).
+
+name: weekly-retrain
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"   # Sundays 00:00 UTC
+  workflow_dispatch:
+    inputs:
+      mape_tolerance:
+        description: >
+          Override PROMOTE_MAPE_TOLERANCE (relative, e.g. 0.05 = +5%).
+          Set to -1 to force-reject — used to prove the reject path works.
+        required: false
+        default: "0.05"
+      diracc_tolerance_pp:
+        description: Override PROMOTE_DIRACC_TOLERANCE_PP (percentage points)
+        required: false
+        default: "0.0"
+
+permissions:
+  contents: write   # the promotion commit is pushed back to the repo
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "dvc[gdrive]"
+
+      - name: Configure DVC remote auth (service account from secret)
+        env:
+          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "$GDRIVE_SA_JSON" > /tmp/gdrive-sa.json
+          dvc remote modify --local gdrive gdrive_use_service_account true
+          dvc remote modify --local gdrive gdrive_service_account_json_file_path /tmp/gdrive-sa.json
+
+      - name: Pull current tracked data and models
+        run: dvc pull
+
+      - name: Re-fetch fresh data and re-run the pipeline
+        run: |
+          # fetch_data's deps (code + universe) rarely change, so force it —
+          # its rolling 5-year window is what pulls in the new week of data.
+          # Everything downstream is then stale and retrains normally.
+          dvc repro --force fetch_data
+          dvc repro
+
+      - name: Promotion gate
+        id: gate
+        env:
+          PROMOTE_MAPE_TOLERANCE: ${{ github.event.inputs.mape_tolerance || '0.05' }}
+          PROMOTE_DIRACC_TOLERANCE_PP: ${{ github.event.inputs.diracc_tolerance_pp || '0.0' }}
+        run: python src/promote_model.py
+
+      - name: Push promoted model + commit production pointer
+        if: steps.gate.outputs.promoted == 'true'
+        run: |
+          dvc push
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dvc.lock config/current_model_metrics.json results/lstm_metrics.csv results/baseline_metrics.csv
+          git commit -m "chore(retrain): promote weekly retrained model [skip ci]"
+          git push
+
+      - name: Note rejected candidate (normal outcome)
+        if: steps.gate.outputs.promoted == 'false'
+        run: echo "New model did not meet promotion criteria — production model unchanged"

@@ -1,0 +1,17 @@
+## Weekly retraining: promotion gate result
+
+Production benchmark from `587acc9` (promoted 2026-07-18T07:46:57+00:00); candidate = this run.
+
+| metric (mean of 40 stocks) | production | candidate |
+|---|---|---|
+| MAPE | 1.2854% | 1.2854% |
+| Directional accuracy | 48.615% | 48.615% |
+| RMSE (INR) | 27.29 | 27.29 |
+| MAE (INR) | 20.03 | 20.03 |
+
+- `PASS  directional accuracy: 48.615% vs required >= 48.615% (production 48.615%, tolerance 0.0pp)`
+- `FAIL  MAPE: 1.2854% vs allowed <= 0.0000% (production 1.2854%, tolerance +-100% relative)`
+
+🛑 **Not promoted** — new model did not meet promotion criteria; production model unchanged (this is a normal outcome)
+
+New model did not meet promotion criteria — production model unchanged
