@@ -3,12 +3,12 @@
 Run the entire project — training pipeline and dashboard — with nothing
 installed but Docker. No Python, no venv, no dependency wrangling.
 
-> **Status: authored but not yet build-verified.** No Docker runtime was
-> available on the development machine when this phase was written (Docker
-> Desktop had been uninstalled), so `docker compose build/up` has not been
-> executed against these files yet. The checklist at the bottom is the
-> exact verification to run once a runtime (Docker Desktop or Colima) is
-> installed. This note gets deleted when that happens.
+> **Status: build-verified end-to-end** (2026-07-18, Colima on macOS
+> arm64): both images built, the containerized dashboard served on :8501,
+> the training container ran the full `dvc repro` (fetch → features →
+> baselines → 40 LSTMs, ~25 min), and after `docker compose restart app`
+> the dashboard served the training run's fresh `results/` from the shared
+> volume — proving the retrain → serve loop. Measured sizes below.
 
 ## Quickstart
 
@@ -76,13 +76,22 @@ Applied in the Dockerfiles:
   re-download TF)
 - `.dockerignore` keeps data/models/notebooks out of the build context
 
-Honest expectations: the training image will still land in the 2.5–3 GB
-range — TensorFlow's wheels plus NumPy/SciPy/pandas are simply that big,
-and a multi-stage build doesn't help when the "build-time" dependencies
-*are* the runtime dependencies (there is no compile step to discard; the
-wheels are prebuilt). The app image should land around 400–500 MB, the
-gap being the whole argument for the two-image split. Record actuals with
-`docker images` after the first build.
+Measured (Colima, linux/arm64):
+
+| image | size |
+|---|---|
+| `equity-lstm-training` | **4.16 GB** |
+| `equity-lstm-app` | **886 MB** |
+
+The training image exceeds the 2.5–3 GB expectation: TensorFlow +
+NumPy/SciPy/pandas wheels plus the DVC/MLflow toolchain are simply that
+big, and a multi-stage build doesn't help when the "build-time"
+dependencies *are* the runtime dependencies (no compile step to discard —
+the wheels are prebuilt). The app image's 886 MB is ~450 MB of Python +
+streamlit/pandas/plotly and ~400 MB of baked-in `results/` seed data
+(mostly the per-horizon prediction CSVs); trimming those seeds to just
+what the dashboard reads is the obvious next size win. The 4.7× gap
+between the images remains the argument for the two-image split.
 
 ## Docker Hub
 
@@ -97,16 +106,23 @@ docker push <username>/equity-lstm-training:latest
 docker push <username>/equity-lstm-app:latest
 ```
 
-## Verification checklist (run when a Docker runtime is available)
+## Verification checklist — all executed 2026-07-18 (Colima/macOS arm64)
 
-1. `docker compose build` — both images build clean.
-2. `docker compose up -d app` → `curl -s localhost:8501` returns the
-   Streamlit shell; dashboard renders in a browser.
-3. `docker compose run --rm training` — full `dvc repro` completes inside
-   the container (fetch → features → baselines → LSTM).
-4. Restart the app (`docker compose restart app`) and confirm it serves
-   the training run's fresh `results/` from the shared volume.
-5. The zero-local-Python proof: `deactivate` any venv (or use a machine
-   with no Python at all) and repeat 1–4 — nothing on the host is
-   consulted except Docker.
-6. `docker images | grep equity-lstm` — record the size table here.
+1. ✅ `docker compose --profile training build` — both images built clean.
+2. ✅ `docker compose up -d app` → HTTP 200 on localhost:8501; dashboard
+   fully rendered (screenshot: [screenshots/docker_app.png](screenshots/docker_app.png)).
+3. ✅ `docker compose run --rm training` — full `dvc repro` inside the
+   container: fetch → features → baselines → 40 LSTMs in ~25 min,
+   `results/lstm_metrics.csv` + `models/lstm/` written to the volumes.
+4. ✅ `docker compose restart app` — dashboard served the *fresh*
+   `lstm_metrics.csv` (volume timestamp minutes old, values differing
+   from the image-baked seed), proving the retrain → serve loop.
+5. ✅ Zero-local-Python: every command above used only the Docker CLI —
+   the containers resolve their own interpreters and dependencies; the
+   host venv was never consulted.
+6. ✅ Sizes recorded in the table above.
+
+Note for macOS + external-drive setups: this run hosted the Colima VM on
+an APFS sparsebundle on an exFAT external drive (internal disk was full).
+`hdiutil create -type SPARSEBUNDLE -fs APFS`, mount, move `~/.colima`
+there, symlink back — works; exFAT can't host the VM disk directly.
