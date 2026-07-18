@@ -1,5 +1,11 @@
-# Data (raw price data is regenerable via src/data_loader.py — keep it out of git)
-data/
+# Data (raw price data is regenerable via src/data_loader.py — keep it out
+# of git). `data/*` not `data/` so the exception below can apply — git never
+# descends into a fully-ignored directory.
+data/*
+# …except the shadow prediction log (Phase 4): it is NOT regenerable — it is
+# the timestamped record of what the model predicted before actuals were
+# known, and the drift detectors' input. Small CSV, versioned in git.
+!data/prediction_log.csv
 
 # Python
 __pycache__/
