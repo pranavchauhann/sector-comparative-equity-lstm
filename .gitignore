@@ -29,6 +29,10 @@ models/
 # Streamlit
 .streamlit/secrets.toml
 
+# Docker env file (Phase 5) — real credentials live here, only the
+# placeholder .env.example is versioned.
+.env
+
 # MLflow local tracking store (Phase 2) — run metadata (SQLite) + logged
 # artifacts. Local-only by design: DVC versions the canonical model
 # artifacts, git versions the code; this is queryable experiment history

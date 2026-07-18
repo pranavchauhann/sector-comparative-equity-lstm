@@ -135,7 +135,24 @@ The more revealing test, though, is not RMSE but **directional accuracy** — wh
 
 ---
 
-## How to reproduce locally
+## How to reproduce
+
+### Docker (recommended — no local Python setup at all)
+
+```bash
+git clone https://github.com/pranavchauhann/sector-comparative-equity-lstm.git
+cd sector-comparative-equity-lstm
+
+docker compose up -d app              # dashboard -> http://localhost:8501
+docker compose run --rm training      # full DVC pipeline, on demand
+```
+
+Two images by design — a lean Streamlit app (no TensorFlow) that runs
+continuously, and a heavy training image that runs on demand, bridged by a
+shared artifacts volume so retraining actually reaches the dashboard.
+Details, rationale, and the verification checklist: [DOCKER_SETUP.md](DOCKER_SETUP.md).
+
+### Manual setup (venv + notebooks)
 
 ```bash
 git clone https://github.com/pranavchauhann/sector-comparative-equity-lstm.git
