@@ -1,0 +1,77 @@
+======================================================================
+1/4  Data drift on CLEAN data (expect: no drift)
+======================================================================
+### Data drift check (PSI vs per-stock empirical null, recent 30d, 40 stocks)
+
+| feature | stocks over own null p95 | median PSI (null p95) | verdict |
+|---|---|---|---|
+| daily_return | 10% | 0.27 (0.51) | ok |
+| volume_ratio | 10% | 0.29 (0.56) | ok |
+| ma_50 | 8% | 1.28 (2.34) | ok |
+| macd | 8% | 1.30 (2.42) | ok |
+| rsi_14 | 8% | 0.91 (1.76) | ok |
+| volatility_20 | 8% | 1.61 (2.21) | ok |
+| ma_20 | 5% | 0.78 (1.51) | ok |
+| macd_signal | 5% | 1.48 (2.53) | ok |
+| ma_5 | 2% | 0.34 (0.73) | ok |
+
+✅ No data drift detected — no feature exceeds its empirical null on more than 50% of stocks
+
+======================================================================
+2/4  Data drift on SHOCKED data (expect: drift)
+======================================================================
+### Data drift check (PSI vs per-stock empirical null, recent 30d, 40 stocks)
+
+| feature | stocks over own null p95 | median PSI (null p95) | verdict |
+|---|---|---|---|
+| rsi_14 | 100% | 3.17 (1.76) | 🚨 drifted |
+| volatility_20 | 100% | 3.16 (2.21) | 🚨 drifted |
+| daily_return | 95% | 1.45 (0.51) | 🚨 drifted |
+| volume_ratio | 95% | 1.39 (0.56) | 🚨 drifted |
+| ma_50 | 8% | 1.28 (2.34) | ok |
+| macd | 8% | 1.30 (2.42) | ok |
+| ma_20 | 5% | 0.78 (1.51) | ok |
+| macd_signal | 5% | 1.48 (2.53) | ok |
+| ma_5 | 2% | 0.34 (0.73) | ok |
+
+🚨 **Data drift detected** in: rsi_14, volatility_20, daily_return, volume_ratio — triggering retrain
+- rsi_14 worst offenders: TCS.NS (PSI 3.17 vs null p95 1.34), AXISBANK.NS (PSI 3.17 vs null p95 1.40), KOTAKBANK.NS (PSI 3.17 vs null p95 1.42)
+- volatility_20 worst offenders: DABUR.NS (PSI 3.16 vs null p95 1.92), NESTLEIND.NS (PSI 3.16 vs null p95 1.92), HCLTECH.NS (PSI 3.16 vs null p95 1.93)
+- daily_return worst offenders: ITC.NS (PSI 2.35 vs null p95 0.60), COALINDIA.NS (PSI 2.03 vs null p95 0.46), TATACONSUM.NS (PSI 2.03 vs null p95 0.59)
+- volume_ratio worst offenders: JIOFIN.NS (PSI 2.01 vs null p95 0.55), SBIN.NS (PSI 1.94 vs null p95 0.57), BAJAJFINSV.NS (PSI 2.02 vs null p95 0.67)
+
+======================================================================
+3/4  Performance drift on CLEAN log (expect: no drift)
+======================================================================
+### Performance drift check
+
+| | value |
+|---|---|
+| training benchmark MAPE | 1.2854% |
+| rolling 20d live MAPE | 1.2515% |
+| relative excess | -2.6% (threshold +50%) → ok |
+| Mann-Whitney U p (recent 800 vs reference 1600 APEs) | 9.01e-01 → ok |
+
+✅ No performance drift detected
+
+======================================================================
+4/4  Performance drift on INFLATED log (expect: drift)
+======================================================================
+### Performance drift check
+
+| | value |
+|---|---|
+| training benchmark MAPE | 1.2854% |
+| rolling 20d live MAPE | 3.0270% |
+| relative excess | +135.5% (threshold +50%) → FIRED |
+| Mann-Whitney U p (recent 800 vs reference 1600 APEs) | 6.03e-55 → FIRED |
+
+🚨 **Performance drift detected** — triggering retrain
+
+======================================================================
+  PASS  clean_data_passes
+  PASS  shocked_data_flagged
+  PASS  clean_log_passes
+  PASS  inflated_log_flagged
+
+simulate_drift: ALL CHECKS PASSED

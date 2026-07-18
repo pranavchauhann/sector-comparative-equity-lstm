@@ -238,6 +238,39 @@ reject paths: [results/retraining_logs/](results/retraining_logs/).
 
 ---
 
+## Monitoring & drift detection
+
+The weekly schedule is backed by a **daily drift check**
+([.github/workflows/drift-check.yml](.github/workflows/drift-check.yml))
+that makes retraining event-driven, not just calendar-driven. A shadow
+evaluation log ([src/log_predictions.py](src/log_predictions.py)) records
+every prediction before its actual is knowable, feeding two complementary
+detectors:
+
+- **Performance drift** ([src/drift_performance.py](src/drift_performance.py)):
+  rolling 20-day live MAPE vs the training benchmark — flags only on a
+  sustained +50% relative excess **confirmed** by a one-sided Mann-Whitney U
+  test (p < 0.01) on the error distributions.
+- **Data drift** ([src/drift_data.py](src/drift_data.py)): per-feature PSI of
+  the last 30 days vs each stock's training split — on stationarity-
+  transformed features, against an **empirically calibrated per-stock null**
+  (the textbook 0.25 cutoff false-alarms on autocorrelated windows), flagging
+  a feature only when >50% of the universe exceeds its own 95th percentile.
+  This catches regime changes and broken data feeds *days before* enough
+  realised errors exist for performance drift to see them.
+
+If either detector flags, the retraining workflow is dispatched immediately —
+its promotion gate still applies, so drift triggers a *candidate*, never a
+silent replacement. Both detectors are proven against deliberately injected
+synthetic drift ([scripts/simulate_drift.py](scripts/simulate_drift.py)): the
+crash-regime shock flagged exactly the four injected features and nothing else.
+
+![Drift monitor](results/plots/drift_monitor.png)
+
+Full design, thresholds, and rationale: [DRIFT_DETECTION.md](DRIFT_DETECTION.md).
+
+---
+
 ## Limitations & future work
 
 - ~~**Price-level prediction, not returns.**~~ **Done (Phase 4b):** the returns-target LSTM confirmed the diagnosis, cutting MAPE from 4.31% to 1.28% and improving all 40 stocks — while directional accuracy stayed at a coin flip, as expected.

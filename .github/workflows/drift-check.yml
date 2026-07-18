@@ -1,0 +1,93 @@
+# Phase 4: daily drift check — the trigger that makes retraining
+# event-driven instead of purely scheduled.
+#
+# Every weekday after NSE close (16:00 IST ≈ 10:30 UTC; run at 12:00 UTC)
+# this workflow refreshes market data, appends to the shadow prediction log,
+# and runs both drift detectors:
+#   * performance drift (src/drift_performance.py): rolling live MAPE vs the
+#     training benchmark + Mann-Whitney confirmation
+#   * data drift (src/drift_data.py): per-feature PSI vs an empirically
+#     calibrated per-stock null
+# If EITHER flags, it dispatches the Phase 3 weekly-retrain workflow
+# immediately instead of waiting for Sunday. Either way the verdicts land in
+# the job summary and the updated prediction log is committed back.
+#
+# Secrets required: GDRIVE_SERVICE_ACCOUNT_JSON (same as retrain.yml).
+
+name: daily-drift-check
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-5"   # weekdays 12:00 UTC, after NSE close
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit the updated prediction log
+  actions: write    # dispatch the retrain workflow on a drift flag
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "dvc[gdrive]"
+
+      - name: Configure DVC remote auth
+        env:
+          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "$GDRIVE_SA_JSON" > /tmp/gdrive-sa.json
+          dvc remote modify --local gdrive gdrive_use_service_account true
+          dvc remote modify --local gdrive gdrive_service_account_json_file_path /tmp/gdrive-sa.json
+
+      - name: Pull tracked data and models
+        run: dvc pull
+
+      - name: Refresh market data (features only, no retrain)
+        run: |
+          dvc repro --force fetch_data
+          dvc repro engineer_features
+
+      - name: Update shadow prediction log
+        run: python src/log_predictions.py
+
+      - name: Performance drift check
+        id: perf
+        run: python src/drift_performance.py --plot
+
+      - name: Data drift check
+        id: data
+        run: python src/drift_data.py
+
+      - name: Commit updated prediction log + drift plot
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/prediction_log.csv results/plots/drift_monitor.png
+          git diff --cached --quiet || git commit -m "chore(drift): daily shadow log + drift monitor update [skip ci]"
+          git push
+
+      - name: Trigger retrain on drift
+        if: steps.perf.outputs.drift == 'true' || steps.data.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Drift flagged (performance=${{ steps.perf.outputs.drift }}, data=${{ steps.data.outputs.drift }}) — dispatching retrain"
+          gh workflow run weekly-retrain --ref "${GITHUB_REF_NAME}"
+          echo "🔁 **Out-of-schedule retrain dispatched** (drift flagged)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No drift — nothing to do
+        if: steps.perf.outputs.drift != 'true' && steps.data.outputs.drift != 'true'
+        run: echo "No drift detected — next scheduled retrain remains Sunday 00:00 UTC"
