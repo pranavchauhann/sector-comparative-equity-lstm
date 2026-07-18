@@ -1,0 +1,45 @@
+# Phase 5: orchestration of the training pipeline + Streamlit dashboard.
+#
+#   docker compose up -d              # start the dashboard -> localhost:8501
+#   docker compose run --rm training  # run the full DVC pipeline on demand
+#
+# The `artifacts` and `models` named volumes are the bridge between the two
+# containers: training writes results/ and models/ into them, the app reads
+# results/ from the same volume. Without the volume mounted, the training
+# container would still *run* — but its outputs would die with the
+# container, and the app would keep serving the stale results baked into
+# its image at build time: silent staleness, the exact failure mode
+# volumes exist to prevent.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: equity-lstm-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - artifacts:/app/results
+    restart: unless-stopped
+
+  # On-demand, not continuous: no `restart`, and the `training` profile
+  # keeps it out of a plain `docker compose up`.
+  training:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: equity-lstm-training
+    profiles: ["training"]
+    env_file:
+      - .env
+    volumes:
+      - artifacts:/work/results
+      - models:/work/models
+      - pipeline-data:/work/data   # raw+processed data persists across runs,
+                                   # so dvc repro can skip unchanged stages
+
+volumes:
+  artifacts:
+  models:
+  pipeline-data:
