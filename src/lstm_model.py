@@ -44,6 +44,7 @@ from __future__ import annotations
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import Adam
 
 import numpy as np
 import pandas as pd
@@ -115,22 +116,32 @@ def scale_target(
     return y_train, y_val, y_test, scaler
 
 
-def build_lstm_model(input_shape: tuple[int, int], units: int = 64) -> Sequential:
-    """2 stacked LSTM layers (50-100 units each) + Dropout(0.2) + Dense output.
+def build_lstm_model(
+    input_shape: tuple[int, int],
+    units: int = 64,
+    dropout: float = 0.2,
+    learning_rate: float = 0.001,
+) -> Sequential:
+    """2 stacked LSTM layers (50-100 units each) + Dropout + Dense output.
 
     ``input_shape`` is ``(seq_length, num_features)``. A second Dropout after
     the final LSTM layer (before the Dense head) is included in addition to
     the required dropout *between* the two LSTM layers — standard practice
     for regularising the layer that feeds the output directly.
+
+    ``units``/``dropout``/``learning_rate`` are exposed as real knobs (rather
+    than hard-coded) so Phase 2's MLflow experiment sweeps can vary them; the
+    defaults reproduce the Phase 4 architecture exactly.
     """
     model = Sequential([
         LSTM(units, return_sequences=True, input_shape=input_shape),
-        Dropout(0.2),
+        Dropout(dropout),
         LSTM(units),
-        Dropout(0.2),
+        Dropout(dropout),
         Dense(1),
     ])
-    model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+    model.compile(optimizer=Adam(learning_rate=learning_rate),
+                  loss="mse", metrics=["mae"])
     return model
 
 

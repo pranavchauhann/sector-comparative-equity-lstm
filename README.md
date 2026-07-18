@@ -191,6 +191,28 @@ DAG diagram, and the exact proof output: [DVC_SETUP.md](DVC_SETUP.md).
 
 ---
 
+## Experiment tracking (MLflow)
+
+Every training run — all three baselines and every LSTM configuration — is
+automatically logged to **[MLflow](https://mlflow.org)**: hyperparameters,
+per-epoch loss curves, final test metrics, and the model artifact itself.
+Runs are grouped into one experiment per sector, so an LSTM run and its
+baselines are directly comparable on the same test split. DVC and MLflow
+track the same training event for different purposes: DVC answers *"can I
+reproduce this artifact?"*, MLflow answers *"which configuration was best,
+and why?"*.
+
+![MLflow run comparison](results/mlflow_screenshots/lstm_config_comparison.png)
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db   # dashboard at localhost:5000
+```
+
+Setup, logging details, and how to reproduce the comparison runs:
+[MLFLOW_SETUP.md](MLFLOW_SETUP.md).
+
+---
+
 ## Limitations & future work
 
 - ~~**Price-level prediction, not returns.**~~ **Done (Phase 4b):** the returns-target LSTM confirmed the diagnosis, cutting MAPE from 4.31% to 1.28% and improving all 40 stocks — while directional accuracy stayed at a coin flip, as expected.
