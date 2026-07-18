@@ -1,0 +1,4 @@
+[core]
+    remote = gdrive
+['remote "gdrive"']
+    url = gdrive://1a2b3c4d5e6f-PLACEHOLDER_FOLDER_ID

@@ -1,0 +1,133 @@
+schema: '2.0'
+stages:
+  fetch_data:
+    cmd: .venv/bin/python scripts/fetch_data.py
+    deps:
+    - path: config/universe.json
+      hash: md5
+      md5: fadd7bd0c3da868ec3121b7a4c964b0a
+      size: 7249
+    - path: scripts/fetch_data.py
+      hash: md5
+      md5: 643aeb133a719e408de4dc8fe61f83f2
+      size: 992
+    - path: src/data_loader.py
+      hash: md5
+      md5: 48b232d706fa8f6f4d5023de8ab1b381
+      size: 7377
+    - path: src/universe.py
+      hash: md5
+      md5: b890fc9e7ab751a78c22207329e44c13
+      size: 10350
+    outs:
+    - path: data/raw
+      hash: md5
+      md5: 4cdd643a635e1be9662f0769f282f41f.dir
+      size: 4585284
+      nfiles: 40
+  engineer_features:
+    cmd: .venv/bin/python scripts/engineer_features.py
+    deps:
+    - path: config/universe.json
+      hash: md5
+      md5: fadd7bd0c3da868ec3121b7a4c964b0a
+      size: 7249
+    - path: data/raw
+      hash: md5
+      md5: 4cdd643a635e1be9662f0769f282f41f.dir
+      size: 4585284
+      nfiles: 40
+    - path: scripts/engineer_features.py
+      hash: md5
+      md5: 9e49148504a4684182621cd222134605
+      size: 1594
+    - path: src/features.py
+      hash: md5
+      md5: 7ed18cf44244c27cf570bbab8d47db08
+      size: 4131
+    - path: src/scaling.py
+      hash: md5
+      md5: c3f93b302f11f0351c42957197833924
+      size: 3830
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: 626120f32bf047e07ecea9c80f2fcf8e.dir
+      size: 12450174
+      nfiles: 40
+  train_baselines:
+    cmd: .venv/bin/python scripts/train_baselines.py
+    deps:
+    - path: config/universe.json
+      hash: md5
+      md5: fadd7bd0c3da868ec3121b7a4c964b0a
+      size: 7249
+    - path: data/processed
+      hash: md5
+      md5: 626120f32bf047e07ecea9c80f2fcf8e.dir
+      size: 12450174
+      nfiles: 40
+    - path: scripts/train_baselines.py
+      hash: md5
+      md5: 1135a7fe3af3ac252a9a97610c8734ff
+      size: 5067
+    - path: src/baselines.py
+      hash: md5
+      md5: bf2dd011619067d7b96007d92e5380ef
+      size: 6729
+    - path: src/evaluate.py
+      hash: md5
+      md5: aa0cb1946adf4ec43c747396f93b0a33
+      size: 2616
+    - path: src/scaling.py
+      hash: md5
+      md5: c3f93b302f11f0351c42957197833924
+      size: 3830
+    outs:
+    - path: models/baselines
+      hash: md5
+      md5: 42709c82461b564942599b635e1ab562.dir
+      size: 337797320
+      nfiles: 80
+    - path: results/baseline_metrics.csv
+      hash: md5
+      md5: d0952f21d77b2d7ce03b707efe41cd05
+      size: 10610
+  train_lstm:
+    cmd: .venv/bin/python scripts/train_lstm.py
+    deps:
+    - path: config/universe.json
+      hash: md5
+      md5: fadd7bd0c3da868ec3121b7a4c964b0a
+      size: 7249
+    - path: data/processed
+      hash: md5
+      md5: 626120f32bf047e07ecea9c80f2fcf8e.dir
+      size: 12450174
+      nfiles: 40
+    - path: scripts/train_lstm.py
+      hash: md5
+      md5: 3ef644053731e748406b4f8f3b0452fd
+      size: 4595
+    - path: src/evaluate.py
+      hash: md5
+      md5: aa0cb1946adf4ec43c747396f93b0a33
+      size: 2616
+    - path: src/lstm_model.py
+      hash: md5
+      md5: 8adfd848a93854405e188953dff83270
+      size: 7731
+    - path: src/scaling.py
+      hash: md5
+      md5: c3f93b302f11f0351c42957197833924
+      size: 3830
+    outs:
+    - path: models/lstm
+      hash: md5
+      md5: c6e12b88ffe2598478e8f81078882a91.dir
+      size: 26445568
+      nfiles: 40
+    - path: results/lstm_metrics.csv
+      hash: md5
+      md5: fff2bf2789a76a33d6c783834a59ef17
+      size: 4221

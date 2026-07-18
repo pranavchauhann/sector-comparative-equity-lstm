@@ -134,6 +134,25 @@ def build_lstm_model(input_shape: tuple[int, int], units: int = 64) -> Sequentia
     return model
 
 
+def reconstruct_price_from_returns(
+    today_prices: pd.Series | np.ndarray, pred_returns: np.ndarray,
+) -> np.ndarray:
+    """Convert predicted next-day *returns* back to next-day *price levels*.
+
+    ``pred_price[t+1] = today_price[t] * (1 + pred_return[t+1])``.
+
+    This is the evaluation bridge for the returns-target LSTM: the model
+    regresses on scale-free returns (avoiding the price-level extrapolation
+    failure documented in Phase 4 — a scaled-price target cannot exceed the
+    training range), but metrics are still computed on reconstructed prices
+    so RMSE/MAE/MAPE are directly comparable with the price-level models.
+    Directional accuracy is unaffected by the reconstruction since
+    ``sign(pred_price - today_price) == sign(pred_return)``.
+    """
+    today = np.asarray(today_prices, dtype=float)
+    return today * (1.0 + np.asarray(pred_returns, dtype=float))
+
+
 def train_lstm(
     model: Sequential,
     X_train: np.ndarray, y_train: np.ndarray,
