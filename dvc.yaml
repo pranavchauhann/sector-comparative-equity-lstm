@@ -1,0 +1,51 @@
+stages:
+  fetch_data:
+    cmd: .venv/bin/python scripts/fetch_data.py
+    deps:
+      - scripts/fetch_data.py
+      - src/data_loader.py
+      - src/universe.py
+      - config/universe.json
+    outs:
+      - data/raw
+
+  engineer_features:
+    cmd: .venv/bin/python scripts/engineer_features.py
+    deps:
+      - scripts/engineer_features.py
+      - src/features.py
+      - src/scaling.py
+      - data/raw
+      - config/universe.json
+    outs:
+      - data/processed
+
+  train_baselines:
+    cmd: .venv/bin/python scripts/train_baselines.py
+    deps:
+      - scripts/train_baselines.py
+      - src/baselines.py
+      - src/evaluate.py
+      - src/scaling.py
+      - data/processed
+      - config/universe.json
+    outs:
+      - models/baselines
+    metrics:
+      - results/baseline_metrics.csv:
+          cache: false
+
+  train_lstm:
+    cmd: .venv/bin/python scripts/train_lstm.py
+    deps:
+      - scripts/train_lstm.py
+      - src/lstm_model.py
+      - src/evaluate.py
+      - src/scaling.py
+      - data/processed
+      - config/universe.json
+    outs:
+      - models/lstm
+    metrics:
+      - results/lstm_metrics.csv:
+          cache: false

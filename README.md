@@ -164,6 +164,33 @@ To refresh the market-cap snapshot (rather than use the locked, dated one), re-r
 
 ---
 
+## Reproducibility (DVC)
+
+Beyond code, **the data and trained models are version-controlled with
+[DVC](https://dvc.org)** — not just "whatever was in the CSV at the time."
+`dvc.yaml` defines the pipeline as a 4-stage DAG (`fetch_data →
+engineer_features → {train_baselines, train_lstm}`); `dvc.lock` pins the
+exact dependency hashes that produced the currently-tracked data and models.
+
+```bash
+git clone https://github.com/pranavchauhann/sector-comparative-equity-lstm.git
+cd sector-comparative-equity-lstm
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+dvc pull      # fetch the exact tracked data/models (fast, no retraining)
+# — or —
+dvc repro     # regenerate everything from scratch (~10-12 min: fetch, engineer,
+              #   fit baselines, train 40 LSTMs), re-running only stale stages
+```
+
+`dvc repro` re-runs only what a change actually affects — verified by editing
+a single baseline script and confirming the ~7-minute LSTM training stage was
+correctly skipped, since it has no dependency on what changed. Full writeup,
+DAG diagram, and the exact proof output: [DVC_SETUP.md](DVC_SETUP.md).
+
+---
+
 ## Limitations & future work
 
 - ~~**Price-level prediction, not returns.**~~ **Done (Phase 4b):** the returns-target LSTM confirmed the diagnosis, cutting MAPE from 4.31% to 1.28% and improving all 40 stocks — while directional accuracy stayed at a coin flip, as expected.

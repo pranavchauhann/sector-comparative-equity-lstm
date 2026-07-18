@@ -77,7 +77,8 @@ def arima_forecast(
     history: pd.Series,
     test_actuals: pd.Series,
     order: tuple[int, int, int] = (5, 1, 0),
-) -> pd.Series:
+    return_model: bool = False,
+):
     """Walk-forward one-step-ahead ARIMA forecast over a test period.
 
     Parameters
@@ -91,12 +92,21 @@ def arima_forecast(
         "as of today."
     order : (p, d, q) ARIMA order. Not grid-searched — this is a classical
         baseline, not the model under study.
+    return_model : if True, also return the *initial* fitted results object
+        (trained on ``history`` only, before any walk-forward appends) —
+        used by scripts/train_baselines.py to persist a DVC-tracked model
+        artifact. Deliberately not the post-walk-forward object: repeatedly
+        appending the whole test period bloats the pickled state to ~10MB
+        per stock without representing anything about the *trained* model
+        (it's test-time bookkeeping). Off by default so existing callers
+        (notebooks) are unaffected.
 
     Returns
     -------
     pd.Series indexed like ``test_actuals``, each value the one-step-ahead
     forecast for the day *after* that index date (comparable to the other
-    baselines' ``target_next_close`` predictions).
+    baselines' ``target_next_close`` predictions). If ``return_model=True``,
+    returns ``(preds, fitted_model)`` instead.
 
     Raises
     ------
@@ -107,14 +117,16 @@ def arima_forecast(
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = ARIMA(history.values, order=order).fit()
+        initial_fit = ARIMA(history.values, order=order).fit()
 
+        res = initial_fit
         preds = []
         for actual_today in test_actuals.values:
             res = res.append([actual_today], refit=False)
             preds.append(res.forecast(1)[0])
 
-    return pd.Series(preds, index=test_actuals.index, name="arima_pred")
+    result = pd.Series(preds, index=test_actuals.index, name="arima_pred")
+    return (result, initial_fit) if return_model else result
 
 
 if __name__ == "__main__":
