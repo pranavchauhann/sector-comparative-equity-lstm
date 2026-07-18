@@ -1,0 +1,12 @@
+{
+  "description": "Benchmark metrics of the current production LSTM models (mean across the 40-stock locked universe). Updated only by src/promote_model.py when a retraining run passes the promotion gate.",
+  "promoted_at": "2026-07-18T07:46:57+00:00",
+  "source_commit": "587acc9",
+  "n_stocks": 40,
+  "metrics": {
+    "mean_MAPE": 1.285413,
+    "mean_directional_accuracy": 48.615106,
+    "mean_RMSE": 27.294859,
+    "mean_MAE": 20.027274
+  }
+}

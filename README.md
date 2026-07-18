@@ -213,6 +213,31 @@ Setup, logging details, and how to reproduce the comparison runs:
 
 ---
 
+## Automated retraining (GitHub Actions)
+
+A scheduled workflow
+([.github/workflows/retrain.yml](.github/workflows/retrain.yml)) retrains
+the models **every Sunday 00:00 UTC** (also manually triggerable via
+*workflow_dispatch*): it pulls the tracked data/models with DVC, re-fetches
+fresh market data (the fetch stage's rolling 5-year window extends the date
+range on every run), re-runs the pipeline, and then applies a **promotion
+gate** — no blind auto-replacement:
+
+- **Directional accuracy must be equal or better** than the current
+  production benchmark ([config/current_model_metrics.json](config/current_model_metrics.json)), and
+- **MAPE must not worsen by more than 5% relative.**
+
+Only if both hold does the workflow `dvc push` the new models and commit the
+updated production pointer back to the repo (as a bot commit). A rejected
+candidate ends the run successfully with *"production model unchanged"* — a
+normal outcome, by design: an always-accept policy would let one bad data
+fetch (e.g. an upstream outage returning truncated prices) silently replace
+a good model. Gate logic and threshold rationale:
+[src/promote_model.py](src/promote_model.py); proof of both accept and
+reject paths: [results/retraining_logs/](results/retraining_logs/).
+
+---
+
 ## Limitations & future work
 
 - ~~**Price-level prediction, not returns.**~~ **Done (Phase 4b):** the returns-target LSTM confirmed the diagnosis, cutting MAPE from 4.31% to 1.28% and improving all 40 stocks — while directional accuracy stayed at a coin flip, as expected.
